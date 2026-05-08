@@ -1,9 +1,24 @@
 # Getting Started — 새 세션 진입 가이드
 
-이 폴더는 GeekChat v2 Next.js 프론트엔드를 새 세션에서 시작하기 위한 핸드오프 자료다.
-**아직 코드 한 줄도 없음**. `npx create-next-app`은 첫 세션에서 실행할 것.
+> **⚠️ 이 문서는 작성 시점(2026-05-08 초기) 기준으로 Next.js 15 + Tailwind v3 가정으로 쓰였음.**
+>
+> **실제 설치된 버전은 Next.js 16.2.5 + React 19.2.4 + Tailwind v4.2.4 + ESLint v9 (flat config).**
+>
+> 가장 먼저 읽어야 할 문서는 → [`SESSION_PROGRESS.md`](./SESSION_PROGRESS.md) (현 상태 한눈에).
+>
+> 버전 차이 핵심:
+> - `tailwind.config.ts` **없음** — `globals.css`에서 `@theme` + `@custom-variant dark`로 설정
+> - Turbopack default — `--no-turbopack` 플래그 사라짐
+> - `npx create-next-app`은 **이미 실행됨** — 재실행 X
+>
+> 이 문서의 §2 "첫 세션 권장 절차"는 historical reference. 실제 진입은 SESSION_PROGRESS.md를 따를 것.
 
-작성일: 2026-05-08
+---
+
+이 폴더는 GeekChat v2 Next.js 프론트엔드를 새 세션에서 시작하기 위한 핸드오프 자료다.
+부트스트랩 + 인프라는 완료, 코드(Phase 1.1)는 다음 세션부터 시작.
+
+작성일: 2026-05-08 (최초) / 갱신: 2026-05-08 (Next.js 16 alert 추가)
 
 ---
 
