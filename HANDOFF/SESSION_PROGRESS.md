@@ -105,6 +105,27 @@ location.reload()
 curl -I http://localhost:3000 | grep -i 'content-security'
 ```
 
+### 1-bis. Code-review carry-over (Phase 1.2 진입 시 함께 처리)
+
+`a546205 fix(api)` 커밋에서 **BLOCKER 1 + HIGH 1 + MEDIUM 1**은 이미 처리됨. 다음은 후행으로 잡아둔 잔여 항목.
+
+| 우선순위 | 위치 | 항목 |
+|---|---|---|
+| LOW | `src/components/AppBoot.tsx:43-48` | 비-AuthExpiredError 발생 시 토큰을 localStorage에 잔류시키지 말고 store/storage 모두 정리하거나 SWR-style retry 추가 |
+| LOW | `src/lib/auth/oauthCallback.ts:22-32` | `parseAndClearHash()` 단일 헬퍼로 통합해 콜백 페이지가 `clearHash` 호출 빠뜨리지 않도록 강제 |
+| LOW | `next.config.ts:14` | `style-src 'unsafe-inline'` 재평가 — Tailwind v4 정적 stylesheet만 쓰면 제거 가능. Sonner 인라인 스타일 영향만 확인 |
+| LOW | `src/lib/api/auth.ts:devLogin` | `if (process.env.NODE_ENV !== "production")` gate로 prod bundle에서 dead-code 제거 |
+| NIT | `src/components/AppBoot.tsx:46` | 프로덕션 로깅 추상화 (logger 또는 Sentry) |
+| NIT | `src/i18n/index.ts:13-18` | `tError` 키 lookup을 typed allowlist로 (백엔드 코드 drift 감지) |
+| NIT | `src/lib/api/auth.ts:oauthStartUrl` 주석 (이미 fix됨, 주석 정합성만) | 주석 "env import is lazy" 표현 수정됨 |
+| NIT | `src/components/auth/SignupForm.tsx:46` | 이중 zod parse — `zodResolver` 통과한 값을 다시 `signupRequestSchema.parse` (안전망 vs 미세 CPU). 그대로 둘지 결정 |
+| NIT | `src/components/ui/Button.tsx:62` | 로딩 spinner가 children과 side-by-side 렌더 — UX 검토 후 결정 |
+
+처리 전략: **Phase 1.2 시작 시 첫 5-10분에 LOW만 일괄 처리 → fix commit. NIT은 마일스톤 정리 시점에**.
+
+OK 항목 (코드 리뷰 검증 통과 — 변경 불요):
+- 단일-플라이트 refresh 동시성, SSR safety, XSS 표면 (no `dangerouslySetInnerHTML`/`innerHTML`/`eval`), `'use client'` 경계, AppBoot mount-once + cleanup, zod 스키마 vs 백엔드 DTO 매칭, OAuth hash decoding (`URLSearchParams`+`replaceState`), Tailwind v4 패턴, 폼 a11y, TypeScript strict.
+
 ### 2. Phase 1.2 — OAuth 콜백 + AuthGuard + /me (목표 ~2.5시간)
 
 #### Step A. OAuth 콜백 페이지 4개 (~1.5시간)
