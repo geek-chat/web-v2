@@ -43,3 +43,5 @@ next-env.d.ts
 
 # OMC / agent state (per-session, never committed)
 .omc/
+.claude/scheduled_tasks.lock
+.claude/state/
