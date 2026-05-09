@@ -1,4 +1,4 @@
-# Session Progress — last updated 2026-05-08
+# Session Progress — last updated 2026-05-09
 
 > **다음 세션 진입자에게**: 이 파일이 첫 진입점입니다. 5분 안에 컨텍스트를 잡고 이어 작업하세요.
 
@@ -6,176 +6,198 @@
 
 ## Current state (one-liner)
 
-Next.js 16 + React 19 + Tailwind v4 부트스트랩 완료. 의존성(zustand/swr/rhf/zod/sonner/lucide) 설치 완료. **코드 작성 (Phase 1.1) 시작 전 상태**. `.claude/` 인프라 + refresh-context 스킬 + Stop 훅까지 갖춰짐.
+**Phase 1.1 완료**. Next.js 16 + React 19 + Tailwind v4 위에 인증 인프라(env+CSP / 토큰 스토리지 / 단일-플라이트 refresh / Zustand 스토어 / 인증 폼 / 랜딩+로그인+가입 페이지) 6개 atomic commit으로 안착. tsc + lint + build 전부 exit 0. 백엔드 dev 서버 띄워서 수동 검증만 남음. 다음은 **Phase 1.2** (OAuth 콜백 4페이지 + AuthGuard + /me + i18n 보강).
 
-## Stack 실제 버전 (HANDOFF의 "v15" 표기는 outdated)
+## Stack 실제 버전
 
-| | 실제 설치된 버전 | HANDOFF 문서 |
-|---|---|---|
-| Next.js | **16.2.5** | (v15로 표기됨) |
-| React | **19.2.4** | (v18 가정) |
-| Tailwind | **v4.2.4** (CSS-based config) | (v3 + `tailwind.config.ts` 가정) |
-| TypeScript | 5.x | 일치 |
-| ESLint | v9 (flat config) | 일치 |
-| zustand | 5.0.13 | 일치 |
-| swr | 2.4.1 | 일치 |
-| react-hook-form | 7.75.0 | 일치 |
-| zod | 4.4.3 | 일치 |
-| sonner | 2.0.7 | 일치 |
-| lucide-react | 1.14.0 | 일치 |
-
-**중요한 v16/v4 차이**: `tailwind.config.ts` 없음. globals.css에서 `@theme` + `@custom-variant dark (&:where(.dark, .dark *));` 패턴 사용. Turbopack default. `--no-turbopack` 플래그 사라짐.
-
----
-
-## Done this session
-
-### 부트스트랩 (완료)
-- [x] `npx create-next-app@latest` (Next.js 16 + TS + Tailwind v4 + App Router + ESLint + src/) 임시 폴더에 생성 후 worktree로 산출물 복사 — `.git/HANDOFF/.omc/README.md` 보존
-- [x] `npm install zustand swr react-hook-form zod @hookform/resolvers sonner lucide-react` (Phase 1 deps 7개)
-- [x] `.env.local` (NEXT_PUBLIC_API_URL, NEXT_PUBLIC_WS_URL) + `.env.example` 작성
-- [x] `.gitignore` 정리 (create-next-app 버전 + `!.env.example` 예외)
-
-### 인프라 + 문서 (완료)
-- [x] `AGENTS.md` 보강 — Next.js 16 / React 19 / Tailwind v4 경고 + 프로젝트 binding rules 10개 + 백엔드 contract 앵커
-- [x] `CLAUDE.md` — `@AGENTS.md` + `@.claude/RULES.md` import + quick reference
-- [x] `.claude/settings.json` — 권한 allowlist + Stop hook (refresh-context 리마인더)
-- [x] `.claude/RULES.md` — 10개 binding rule (R1-R10) + Stack 가정
-- [x] `.claude/README.md` — `.claude/` 폴더 안내
-- [x] `.claude/hooks/refresh-context-reminder.sh` — working tree dirty면 안내 메시지, exit 0 (non-blocking)
-- [x] `.claude/skills/refresh-context/SKILL.md` + `update.sh` — 컨텍스트 최신화 스킬 (인벤토리 → 문서 동기화 → SESSION_PROGRESS 갱신)
-
-### 검증 (완료)
-- [x] `bash .claude/skills/refresh-context/update.sh` 정상 동작 (모든 버전 표시, src/ 파악)
-- [x] `bash .claude/hooks/refresh-context-reminder.sh` exit 0 + 적절한 안내
+| | 설치된 버전 |
+|---|---|
+| Next.js | 16.2.5 (App Router, Turbopack default) |
+| React | 19.2.4 (RSC stable) |
+| Tailwind | 4.2.4 (CSS-based config, `@custom-variant dark`) |
+| TypeScript | 5.x (strict) |
+| ESLint | v9 (flat config) |
+| zustand | 5.0.13 |
+| swr | 2.4.1 |
+| react-hook-form | 7.75.0 |
+| zod | 4.4.3 |
+| @hookform/resolvers | (deps via signupRequestSchema) |
+| sonner | 2.0.7 |
+| lucide-react | 1.14.0 |
 
 ---
 
-## In-flight (paused mid-step)
+## Done this session (Phase 1.1)
 
-**없음**. 이 세션은 부트스트랩 + 인프라까지 깔끔하게 마무리됨. 코드(Phase 1.1)는 의도적으로 다음 세션으로 이월.
+| Step | 산출물 |
+|---|---|
+| 백엔드 컨트랙트 스캔 | Explore agent (read-only) — `AuthDto.kt`, `AuthController.kt`, error mapping, OAuth hash format(snake_case), WS 시그니처 모두 확보 |
+| Step 1 — env + CSP | `next.config.ts` (CSP + Turbopack root), `src/lib/env.ts` (zod 검증) |
+| Step 2 — 테마 | `src/app/globals.css` (Tailwind v4 `@custom-variant dark`, CSS 변수 light/dark) |
+| Step 3 — 인증 헬퍼 | `src/lib/auth/{storage,jwt,oauthCallback}.ts`, `src/lib/uuid.ts` |
+| Step 4 — API + 단일-플라이트 | `src/lib/api/client.ts` (executor opus 위임, 246라인) + `src/lib/api/auth.ts` (8개 함수 + zod 스키마, backend 컨트랙트 verbatim) |
+| Step 5 — 클라이언트 기반 | `src/store/auth.ts` (Zustand slice), `src/i18n/{ko,index}.ts`, `src/components/ui/{Button,Input,Spinner}.tsx`, `src/components/AppBoot.tsx`, `src/app/layout.tsx` (lang=ko, dark, fonts, Toaster, AppBoot) |
+| Step 6 — 폼 + 페이지 | `src/components/auth/{SignupForm,LoginForm,OAuthButtons}.tsx`, `src/app/page.tsx` (랜딩 hero), `src/app/(public)/{login,signup}/page.tsx` |
+| 검증 | `npx tsc --noEmit` ✅ / `npm run lint` ✅ / `npm run build` ✅ (모두 exit 0) |
+| 코드 리뷰 | code-reviewer sub-agent 호출 (백그라운드, 결과는 다음 세션에서도 확인) |
+| 커밋 | 6개 atomic commit (`ea0f041` … `dc4e4c6`) |
+
+### Atomic commit 로그
+
+```
+dc4e4c6 feat(auth): signup/login/OAuth forms + landing/login/signup pages
+968cf86 feat(client-foundation): Zustand auth store, i18n ko, UI primitives, AppBoot
+6279515 feat(api): fetch wrapper with single-flight refresh + auth REST module
+d9a1393 feat(auth/lib): token storage, JWT decode, OAuth hash parsing, uuid
+0dce70a feat(theme): Tailwind v4 class-based dark mode + base CSS variables
+ea0f041 feat(env): add env validation + strict CSP headers + Turbopack root pin
+```
 
 ---
 
-## Next session — start here
+## In-flight (paused)
+
+**없음**. Phase 1.1 깔끔히 마무리. code-reviewer 결과만 후행으로 확인 (필요 시 Phase 1.2 시작 전에 fix commit).
+
+---
+
+## Next session — start here (Phase 1.2)
 
 ### 0. 컨텍스트 잡기 (5분)
 
 ```bash
 cd /Users/jsh14/Work/geek-chat/geek-chat-web-v2/.claude/worktrees/fervent-bell-35addf
 
-# 현재 상태 한 번 보기
+# 한눈에 상태
 bash .claude/skills/refresh-context/update.sh | head -40
 
-# 작동 확인
+# dev 서버 띄워보기 (Phase 1.1 결과 확인)
 npm run dev
-# → http://localhost:3000 (default Next.js 페이지가 뜨면 OK)
+# → http://localhost:3000 (랜딩) / /login / /signup
 # Ctrl+C로 종료
 ```
 
-읽을 문서 (총 ~30분):
+읽을 문서 (총 ~25분):
 1. **이 파일 (SESSION_PROGRESS.md)** — 5분
-2. **`.claude/RULES.md`** — 5분 (binding rules)
-3. **`AGENTS.md`** — 3분 (Stack 변경사항)
-4. **`HANDOFF/AUTH_UX.md`** — 10분
-5. **`HANDOFF/API_INTEGRATION.md`** §4-5 — 5분 (single-flight refresh + WS envelope)
+2. **`.claude/RULES.md`** — 5분 (R1-R10 binding rules)
+3. **`HANDOFF/AUTH_UX.md`** — 10분 (OAuth 4 콜백 와이어프레임)
+4. **`HANDOFF/API_INTEGRATION.md`** §3 — 5분 (OAuth hash format 재확인)
 
-### 1. Phase 1.1 — 인증 인프라 + 폼 + 페이지 (목표 ~3시간)
+### 1. 백엔드 dev 서버 + 수동 검증 (Phase 1.1 통합 테스트)
 
-**원래 plan은** `/Users/jsh14/.claude/plans/1-floating-pixel.md`. 다만 plan은 **Tailwind v3 / Next.js 15 가정**으로 작성됨 — 다음 세션은 v4/v16 패턴으로 수정해서 진행.
+별도 터미널에서:
+```bash
+cd ~/Work/geek-chat/geek-chat-server-v2
+docker run -d -p 3306:3306 -e MYSQL_ROOT_PASSWORD=test -e MYSQL_DATABASE=geekchat mysql:8.0
+./gradlew bootRun --args='--spring.profiles.active=dev'
+```
 
-순서:
+브라우저 콘솔에서 dev-login 토큰 주입 후 `/auth/me` REST 통합 확인:
+```javascript
+const r = await fetch('http://localhost:8080/auth/dev-login?name=Alice').then(r => r.json())
+localStorage.setItem('access_token', r.accessToken)
+localStorage.setItem('refresh_token', r.refreshToken)
+location.reload()
+```
 
-#### Step 1. 기본 설정 (~30분)
-- `src/app/layout.tsx`: `<html lang="ko" className="dark">` + `<body>` 안에 `<Toaster />`(sonner) + `<AppBoot />`
-- `src/app/globals.css`: 기존 `@import "tailwindcss"` 유지, `@custom-variant dark (&:where(.dark, .dark *));` 추가, `:root`/`@theme` 다크모드 변수 정리
-- `src/lib/env.ts`: zod로 `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_WS_URL` 검증 + export
-- `next.config.ts`: `headers()` 메소드로 CSP — `HANDOFF/ARCHITECTURE.md §6` 참조
+빠른 시각 검증 (CSP 헤더):
+```bash
+curl -I http://localhost:3000 | grep -i 'content-security'
+```
 
-#### Step 2. 인증 헬퍼 (~30분)
-- `src/lib/auth/storage.ts`: `getAccessToken/getRefreshToken/setTokens/clear` (localStorage)
-- `src/lib/auth/jwt.ts`: `decodeJwt(token)` + `isExpiringSoon(token, marginSec=30)`
-- `src/lib/auth/oauthCallback.ts`: `parseHash()` + `clearHash()` (`history.replaceState`)
-- `src/lib/uuid.ts`: `crypto.randomUUID()` wrapper (`typeof window` 가드)
+### 2. Phase 1.2 — OAuth 콜백 + AuthGuard + /me (목표 ~2.5시간)
 
-#### Step 3. API client + 단일-플라이트 refresh (~45분 — 가장 까다로움)
-- `src/lib/api/client.ts`: `apiFetch(path, init)` + 401 시 single-flight refresh
-  - 글로벌 `refreshPromise: Promise<string> | null`
-  - 첫 401 → `doRefresh()` → 결과 promise를 모든 동시 401 호출에 공유
-  - refresh 실패 → `clearTokens()` + `window.dispatchEvent(new Event('auth:logout'))`
-  - **`HANDOFF/API_INTEGRATION.md §4` 시퀀스 그대로 구현**
-- `src/lib/api/auth.ts`: 8개 함수 (signup/login/refresh/logout/me/withdraw/completeOAuthSignup/linkProvider) + zod request/response 스키마
-- **이 단계만 별도 sub-agent에 위임 권장** (`executor` opus)
+#### Step A. OAuth 콜백 페이지 4개 (~1.5시간)
+**모두 `'use client'` + `useEffect` mount + 즉시 `clearHash()` (RULES.md R1)**.
 
-#### Step 4. Zustand store + AppBoot (~30분)
-- `src/store/auth.ts`: slice — `user, accessToken, refreshToken, status: 'idle'|'loading'|'authenticated'|'unauthenticated'` + actions (`setTokens, setUser, logout, hydrate`)
-- `src/components/AppBoot.tsx`: `'use client'` — mount 시 storage hydrate → token 있으면 `me()` 호출 → 결과로 status 결정 → 401 catch 시 logout
+- `src/app/(public)/auth/success/page.tsx`
+  - `parseHash()` → `{access_token, refresh_token}` (snake_case)
+  - 누락 시 `/auth/error?error=oauth_failed`로 redirect
+  - 정상 시 `setSession({accessToken, refreshToken})` (snake_case → camelCase 변환)
+  - `clearHash()` → `router.replace('/rooms')`
 
-#### Step 5. UI 프리미티브 + 인증 폼 + 페이지 (~1.5시간)
-- `src/components/ui/{Button,Input,Spinner}.tsx`
-- `src/components/auth/{OAuthButtons,SignupForm,LoginForm}.tsx` (rhf + zod)
-- `src/app/page.tsx` ('use client', 랜딩 = SignupForm + OAuthButtons + "개인정보 수집 X" hero)
-- `src/app/(public)/login/page.tsx`, `src/app/(public)/signup/page.tsx`
+- `src/app/(public)/auth/oauth-link/page.tsx`
+  - parse: `{link_token, existing_nickname, new_provider}` (URL-decoded by URLSearchParams)
+  - 화면: "이미 {existing_nickname}님이 {new_provider}로 가입되어 있습니다. 연동하시겠습니까?"
+  - 두 버튼: "연동" → `linkProvider({linkToken, confirm:true})`, "거절" → `linkProvider({linkToken, confirm:false})`
+  - 결과 분기:
+    - `kind: "logged_in"` → `setSession` → `/rooms`
+    - `kind: "signup_required"` → `signup_token`/`suggested_nickname`을 들고 `/auth/oauth-complete`로 (state로 전달 또는 URL로)
 
-#### Step 6. 검증 (~15분)
-- `npx tsc --noEmit` 통과
-- `npm run lint` 통과
-- `npm run build` 통과
-- `npm run dev` → localhost:3000 다크모드 랜딩 정상
+- `src/app/(public)/auth/oauth-complete/page.tsx`
+  - parse: `{signup_token, suggested_nickname}` (URL-decoded)
+  - 폼: 닉네임 input (default = suggestedNickname, 1~20자)
+  - submit → `completeOAuthSignup({signupToken, nickname})` → `setSession` → `/rooms`
 
-### 2. 검증 패스 → 코드 리뷰 → 커밋 (~30분)
-- sub-agent `verifier` (sonnet) → 빌드/타입 검증
-- sub-agent `code-reviewer` (sonnet) → 단일-플라이트 동시성 / XSS 표면 / `'use client'` 누락
-- atomic commits (6개) — 원래 plan의 commit 메시지 사용
+- `src/app/(public)/auth/error/page.tsx`
+  - parse query: `?error=...`
+  - 메시지 표시 + "다시 시도" → `/`
 
-### 3. 세션 종료 직전
-- **`refresh-context` 스킬 호출**: "최신화" / "refresh-context" 등으로 트리거. Stop hook이 dirty tree 감지 시 자동으로 안내.
-- 이 파일(`SESSION_PROGRESS.md`) 갱신.
-- `.claude/RULES.md`에 새로 정해진 규칙 있으면 추가.
+#### Step B. AuthGuard + (authed) layout (~30분)
+- `src/components/auth/AuthGuard.tsx`: `'use client'`, store status 구독. `unauthenticated` → `router.replace('/login')`. `loading`이면 Spinner. `authenticated`이면 children.
+- `src/app/(authed)/layout.tsx`: `<AuthGuard>{children}</AuthGuard>`
+- 임시 `/rooms`: `src/app/(authed)/rooms/page.tsx` (placeholder "환영합니다 {user.nickname}" + 로그아웃 버튼) — Phase 2에서 진짜 채팅으로 대체
+
+#### Step C. /me 페이지 + 회원탈퇴 (~30분)
+- `src/app/(authed)/me/page.tsx`:
+  - 표시: `user.nickname`, `user.username` (nullable), `user.profileImageUrl` (nullable)
+  - 액션: 로그아웃 (logout API + clearSession + redirect /), 탈퇴 (이중 확인 input "DELETE MY ACCOUNT" → withdraw API + clearSession + 토스트)
+
+#### Step D. 검증 + 커밋 (~30분)
+- `npx tsc --noEmit && npm run lint && npm run build`
+- Google OAuth dev: `http://localhost:8080/auth/google`로 시작 → 신규 계정이면 oauth-complete 흐름
+- 4개 atomic commit (콜백 / AuthGuard / me / 검증)
+
+#### Step E. 세션 종료 직전
+**`refresh-context` 스킬 호출** ("최신화" 트리거). Stop hook이 dirty tree 감지 시 자동 안내.
 
 ---
 
 ## Blockers / decisions needed
 
-| 항목 | 상태 | 비고 |
-|---|---|---|
-| Tailwind v3 → v4 마이그레이션 | 신규 패턴 (CSS config) 적용 필요 | RULES.md R4에 명시됨. globals.css만 손대면 됨. |
-| Next.js 15 → 16 차이 | App Router 자체는 호환, 일부 API 변경 가능 | `node_modules/next/dist/docs/` 참조하라고 AGENTS.md 표시. |
-| 모바일 앱 전략 | ✅ **결정됨** — `MOBILE_STRATEGY.md` 참조 | M1: PWA, M2: React Native + Expo |
-| `.claude/worktrees/` gitignore 머지 | 보류 | parent repo 머지 시점에 결정 |
+| 항목 | 상태 |
+|---|---|
+| code-reviewer sub-agent 결과 | 백그라운드 — 다음 세션 진입 시 첫 5분에 확인하고 BLOCKER/HIGH 있으면 fix 후 진행 |
+| 모바일 전략 | ✅ `MOBILE_STRATEGY.md`로 결정됨 (M1 PWA, M2 RN+Expo) |
+| Phase 1.2 OAuth `linkProvider` 응답 분기 | ✅ `linkProviderResult` discriminated union 이미 `src/lib/api/auth.ts`에 구현됨 — 콜백 페이지에서 사용만 |
 
 ---
 
 ## Important context
 
-### Worktree 작업 중
-- 위치: `geek-chat-web-v2/.claude/worktrees/fervent-bell-35addf/`
-- 브랜치: `claude/fervent-bell-35addf`
-- 부모 repo의 `.git/worktrees/fervent-bell-35addf` 참조 — `.git`을 직접 수정하지 말 것
-- 머지 전략: 추후 PR로 부모 `main`에 merge
+### 주요 결정사항
 
-### 환경
-- macOS, Node.js 18+ 가정
-- Backend: `~/Work/geek-chat/geek-chat-server-v2/` (Kotlin/Spring Boot, 105 tests passing)
-- 백엔드 dev 띄우는 법: `./gradlew bootRun --args='--spring.profiles.active=dev'` (MySQL Docker 필요)
-- dev-login: `GET http://localhost:8080/auth/dev-login?name=Alice` → TokenPair (개발 가속용, prod 404)
+- **백엔드 컨트랙트는 verbatim**: `accessToken`/`refreshToken` (camelCase) — REST DTO. **단, OAuth URL 프래그먼트는 `access_token`/`refresh_token` (snake_case)** — 콜백 페이지에서 변환.
+- **단일-플라이트 refresh**: `src/lib/api/client.ts`의 module-level `refreshPromise`. 동시 401 N개가 와도 refresh는 1번. 실패 시 `auth:logout` window event 발사 → AppBoot에서 catch.
+- **다크모드**: `<html className="dark">` 고정, Tailwind v4 `@custom-variant dark (&:where(.dark, .dark *))` 등록. next-themes는 M2까지 미도입.
+- **i18n**: `src/i18n/ko.ts` flat key/value. 백엔드 에러 코드 → 한국어 매핑 (`tError(code)`).
+- **CSP**: 엄격. `script-src 'self'` (no inline/eval), `connect-src` 환경변수만, `frame-ancestors 'none'`.
+- **localStorage 토큰 + CSP** 조합으로 XSS 표면 최소화 (RULES.md R5).
 
-### refresh-context 스킬 사용법
+### 백엔드 (참고만, 수정 절대 금지)
+
+위치: `~/Work/geek-chat/geek-chat-server-v2/`
+- `AuthController.kt`: 12개 endpoint + OAuth callback 어셈블리 (line 124-143이 hash 포맷 핵심)
+- `AuthDto.kt`: 모든 DTO (camelCase)
+- `ChatErrorMapping.kt`: HTTP 상태 코드 매핑
+- `WebSocketConfig.kt`: `/ws` 경로, `MAX_CONNECTIONS_PER_USER = 3`, `MIN_CONNECTION_INTERVAL_MS = 2000L`
+- 105+ tests passing
+
+### refresh-context 스킬
+
 세션 종료 직전 또는 컨텍스트 압축 직전에:
-- 사용자 트리거: "최신화", "refresh-context", "/refresh-context", "핸드오프 준비"
-- 자동: Stop hook이 dirty tree에서 안내 메시지 출력 (exit 0, non-blocking)
+- 트리거 키워드: "최신화", "refresh-context", "/refresh-context", "핸드오프"
+- 자동: Stop hook (`.claude/hooks/refresh-context-reminder.sh`)이 dirty tree에서 안내 메시지 출력 (exit 0)
 - 수동 인벤토리: `bash .claude/skills/refresh-context/update.sh`
 
-### 모바일 앱 결정 (M1 후)
-- 풀 웹뷰: ❌ 비추 (메신저는 백그라운드/푸시 한계 치명적)
-- 풀 네이티브: 시간/비용 고려 시 부담
-- **React Native + Expo**: ⭐ 추천 (M2). v1에서 Expo 경험 있음, JS/TS 코드 일부 재사용 가능.
-- M1 출시 시점: PWA로 모바일 임시 대응 (manifest.json + Service Worker). FCM Web Push로 알림.
+### Worktree 정보
 
-상세 분석은 `MOBILE_STRATEGY.md` 참조.
+- 위치: `geek-chat-web-v2/.claude/worktrees/fervent-bell-35addf/`
+- 브랜치: `claude/fervent-bell-35addf`
+- 머지 전략: PR로 부모 `main`에 merge (Phase 1.2 완료 후 또는 마일스톤 완료 후 결정)
 
 ---
 
 ## 한 줄 요약
 
-> **부트스트랩 + 인프라 완료. 다음 세션은 RULES.md를 빠르게 훑고 Phase 1.1 Step 1부터 진행 (~3시간 예상). 끝날 때 refresh-context 스킬을 꼭 호출.**
+> **Phase 1.1 완료 (6 commits, build/lint/tsc 통과). 다음 세션은 SESSION_PROGRESS.md의 "Phase 1.2 — OAuth 콜백" 섹션 따라 진행. 끝날 때 refresh-context 스킬 호출 필수.**
