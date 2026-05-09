@@ -13,6 +13,7 @@
  * infinite refresh→retry→401 loop even if the server is misbehaving.
  */
 
+import { z } from "zod";
 import { env } from "@/lib/env";
 import {
   clearTokens,
@@ -49,12 +50,18 @@ export class AuthExpiredError extends ApiError {
 
 // Module-level single-flight slot. Holds the in-flight refresh promise that
 // resolves with the new access token, or null when no refresh is running.
+//
+// Race note: setTokens() runs synchronously inside performRefresh BEFORE the
+// promise resolves, so callers that arrive after the slot clears (in the next
+// microtask) read the rotated refresh token from storage — not the old one.
 let refreshPromise: Promise<string> | null = null;
 
-interface RefreshResponse {
-  accessToken: string;
-  refreshToken: string;
-}
+// Inlined here (not imported from ./auth) to avoid a client.ts ↔ auth.ts cycle.
+// Mirrors auth.ts `tokenPairSchema` exactly.
+const refreshResponseSchema = z.object({
+  accessToken: z.string(),
+  refreshToken: z.string(),
+});
 
 function emitLogout(): void {
   if (typeof window !== "undefined") {
@@ -105,9 +112,18 @@ async function performRefresh(): Promise<string> {
     const body = await readErrorBody(res);
     throw new ApiError(res.status, body, body?.message ?? "Refresh failed");
   }
-  const data = (await res.json()) as RefreshResponse;
-  setTokens({ accessToken: data.accessToken, refreshToken: data.refreshToken });
-  return data.accessToken;
+  // Validate the rotated token pair shape — a malformed response here would
+  // otherwise write garbage to localStorage and brick the session.
+  const parsed = refreshResponseSchema.safeParse(await res.json());
+  if (!parsed.success) {
+    throw new ApiError(
+      500,
+      null,
+      `Refresh response shape invalid: ${parsed.error.message}`,
+    );
+  }
+  setTokens(parsed.data);
+  return parsed.data.accessToken;
 }
 
 /** Single-flight wrapper around performRefresh. */

@@ -14,6 +14,7 @@
  * Nickname matches backend: 1..20 chars.
  */
 import { z } from "zod";
+import { env } from "@/lib/env";
 import { apiFetch } from "./client";
 
 // ─── Reusable schemas ────────────────────────────────────────────────────
@@ -64,10 +65,12 @@ export const signupRequestSchema = z.object({
 export type SignupRequest = z.infer<typeof signupRequestSchema>;
 
 export async function signup(req: SignupRequest): Promise<TokenPair> {
+  // Pass plain object; apiFetch auto-serializes + sets Content-Type: application/json.
+  // Pre-stringifying drops the header → backend 415.
   const body = signupRequestSchema.parse(req);
   const res = await apiFetch<unknown>("/auth/signup", {
     method: "POST",
-    body: JSON.stringify(body),
+    body,
     auth: false,
   });
   return tokenPairSchema.parse(res);
@@ -83,7 +86,7 @@ export async function login(req: LoginRequest): Promise<TokenPair> {
   const body = loginRequestSchema.parse(req);
   const res = await apiFetch<unknown>("/auth/login", {
     method: "POST",
-    body: JSON.stringify(body),
+    body,
     auth: false,
   });
   return tokenPairSchema.parse(res);
@@ -100,7 +103,7 @@ export async function logout(refreshToken: string | null): Promise<void> {
   // Backend accepts logout without auth header (refresh token IS the auth here).
   await apiFetch<unknown>("/auth/logout", {
     method: "POST",
-    body: JSON.stringify({ refreshToken: refreshToken ?? "" }),
+    body: { refreshToken: refreshToken ?? "" },
     auth: false,
   });
 }
@@ -130,7 +133,7 @@ export async function completeOAuthSignup(
   const body = completeOAuthSignupRequestSchema.parse(req);
   const res = await apiFetch<unknown>("/auth/oauth/complete-signup", {
     method: "POST",
-    body: JSON.stringify(body),
+    body,
     auth: false,
   });
   return tokenPairSchema.parse(res);
@@ -157,7 +160,7 @@ export async function linkProvider(
   const body = linkProviderRequestSchema.parse(req);
   const res = await apiFetch<unknown>("/auth/link-provider", {
     method: "POST",
-    body: JSON.stringify(body),
+    body,
     auth: false,
   });
   // Discriminate by shape.
@@ -176,10 +179,9 @@ export async function linkProvider(
 export type OAuthProvider = "google" | "naver";
 
 export function oauthStartUrl(provider: OAuthProvider): string {
-  // env import is lazy via apiFetch's caller — but we need NEXT_PUBLIC_API_URL
-  // directly here. Re-importing env causes the same validation singleton.
-  const base = process.env.NEXT_PUBLIC_API_URL ?? "";
-  return `${base}/auth/${provider}`;
+  // Use the validated env singleton — `process.env.NEXT_PUBLIC_*` with an empty
+  // fallback would silently produce a relative URL on misconfigured builds.
+  return `${env.NEXT_PUBLIC_API_URL}/auth/${provider}`;
 }
 
 // ─── Dev login (development convenience) ─────────────────────────────────
