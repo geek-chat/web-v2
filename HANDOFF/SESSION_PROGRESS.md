@@ -1,4 +1,4 @@
-# Session Progress — last updated 2026-05-09
+# Session Progress — last updated 2026-10-24
 
 > **다음 세션 진입자에게**: 이 파일이 첫 진입점입니다. 5분 안에 컨텍스트를 잡고 이어 작업하세요.
 
@@ -6,7 +6,9 @@
 
 ## Current state (one-liner)
 
-**Phase 1.1 완료**. Next.js 16 + React 19 + Tailwind v4 위에 인증 인프라(env+CSP / 토큰 스토리지 / 단일-플라이트 refresh / Zustand 스토어 / 인증 폼 / 랜딩+로그인+가입 페이지) 6개 atomic commit으로 안착. tsc + lint + build 전부 exit 0. 백엔드 dev 서버 띄워서 수동 검증만 남음. 다음은 **Phase 1.2** (OAuth 콜백 4페이지 + AuthGuard + /me + i18n 보강).
+**보류 중 (2026-10-24부터)**. Phase 1.1 인증까지 구현된 상태에서 멈춰 있다. 사용자가 승인한 전환 계획에 따라 백엔드(server-v2) 운영 전환과 v1 Expo(`geek-chat-web`) 통신 계층 수정을 먼저 하고, web-v2 기능 작업은 그다음에 재개한다. 재개하면 Phase 1.2부터 시작한다.
+
+Phase 1.1 결과: Next.js 16 + React 19 + Tailwind v4 위에 인증 인프라(env와 CSP, 토큰 저장소, single-flight refresh, Zustand 스토어, 인증 폼, 랜딩과 로그인, 가입 페이지). 2026-05 기준 tsc, lint, build 모두 exit 0.
 
 ## Stack 실제 버전
 
@@ -24,6 +26,53 @@
 | @hookform/resolvers | (deps via signupRequestSchema) |
 | sonner | 2.0.7 |
 | lucide-react | 1.14.0 |
+
+---
+
+## 2026-10-24 세션 간 협업 결과
+
+### 전환 계획과 역할 분담
+
+출처: 조율 세션("Complete project prompt with technical specifications")이 보낸 메시지. 사용자 결정 인용은 "전환 계획 승인할게" (2026-10-24).
+
+| 세션 | 저장소 | 역할 |
+|---|---|---|
+| Migrate GeekChat server to Kotlin Spring Boot | `geek-chat-server-v2` | 백엔드 운영 전환 |
+| Complete geek-chat-web-internal tasks 1-12 | `geek-chat-web` (v1 Expo) | v1 통신 계층을 v2 계약(순수 WebSocket `/ws?token=`, `type` JSON)에 맞춤 |
+| Complete project prompt with technical specifications | (조율) | 데이터 이관과 전환 조율 |
+| 이 저장소 (web-v2) | `geek-chat-web-v2` | **보류**. 문서 정리만 함. 다른 저장소는 읽기만 함 |
+
+### 직접 검증한 계약 사실 (server-v2 HEAD `0ccf5c2`, 읽기만 함)
+
+| 항목 | 근거 | web-v2 영향 |
+|---|---|---|
+| 5월 이후 문서 변경은 API.md 2건(`b4ba708` HATEOAS `_links`, `a389f0c` 관리자 AI)뿐, WEBSOCKET.md 0건 | `git log 96aa85c..HEAD` | 단일 방 응답에 `_links`가 붙음. zod `z.object`는 모르는 키를 버리므로 깨지지 않음 |
+| 인증 응답과 OAuth hash 형식 그대로 | `AuthController.kt:112-126` | Phase 1.2 콜백 설계 유효 |
+| `/auth/error?error=` 값은 4종: `oauth_cancelled`, `missing_params`, `invalid_state`, `oauth_failed` | `AuthController.kt:100-112` | 에러 페이지가 4종을 모두 매핑해야 함 |
+| JWT에 role 클레임 추가 | 커밋 `035ad30` | 영향 없음 (`jwt.ts:49`는 `exp`만 읽음) |
+| WS 연결 거부 5가지(NO_TOKEN, TOKEN_EXPIRED, INVALID_TOKEN, RATE_LIMITED, MAX_CONNECTIONS)가 모두 close 1008 | `ChatWebSocketHandler.kt:36-65` | 1008은 직전 `error.code`로 분기. 정본은 `.claude/RULES.md` R2 |
+| 연결 상한 3, 재연결 최소 간격 2초 | `WebSocketSessionManager.kt:16-17` | 백오프는 2초부터 |
+| WS Origin과 OAuth 리다이렉트 대상이 `FRONTEND_URL` 하나 | `WebSocketConfig.kt:20`, `AuthController.kt:100-126` | preview 배포에서 WS 불가. v1 Expo에서 web-v2로 바꿀 때 `FRONTEND_URL`도 같이 바꿔야 함 |
+| 배포 대상은 Render 무료 + Supabase Postgres, 아직 배포 전 | `docs/MIGRATION.md:166-175` | `connect-src`는 이미 env로 만듦 (`next.config.ts:6-7, 18`). URL이 정해지면 Vercel env만 넣으면 됨 |
+
+### v1 세션이 알려 준 인증 함정 (web-v2 반영 상태)
+
+| v1 함정 | web-v2 상태 |
+|---|---|
+| linkToken을 `access_token` 키에 실어 보냄 | 콜백 페이지는 자기 경로의 키만 읽고 일회용 토큰은 저장하지 않는다 (RULES.md R1에 규칙 추가, 구현은 Phase 1.2) |
+| REST와 WS가 따로 refresh해서 회전 토큰이 경합 | WS도 apiFetch의 single-flight refresh를 쓴다 (RULES.md R2에 규칙 추가, 구현은 Phase 2) |
+| 저장소와 스토어의 토큰이 어긋남 | 이미 피함. 스토어는 토큰을 갖지 않고 (`store/auth.ts:22-32`) 실패는 `clearSession()`으로 모인다 (`AppBoot.tsx:54-58`) |
+| `/auth/me` 실패를 조용히 삼킴 | 삼키지는 않지만 네트워크 오류 때 "로그아웃 화면 + 토큰 남음"이 된다 (`AppBoot.tsx:43-48`). 아래 1-bis 표에서 우선순위를 올림 |
+
+### 사용자에게 보고만 한 것 (다른 저장소, 담당은 사용자가 정함)
+
+| # | 위치 | 문제 |
+|---|---|---|
+| S1 | server-v2 `docs/WEBSOCKET.md:166-167` | 샘플이 1008을 일괄 refresh로 안내 |
+| S2 | server-v2 `WebSocketConfig.kt:20` | WS Origin이 `FRONTEND_URL` 하나라 preview 배포에서 WS 불가 |
+| S3 | 워크스페이스 `geek-chat/CLAUDE.md` | MySQL, 친구 클라우드, Next.js 15로 적혀 있어 낡음 |
+| S4 | server-v2 `README.md:30` | `local` 프로필을 MySQL로 설명하지만 `application-local.yml:11-14`은 PostgreSQL |
+| T1 | `geek-chat-web` main `559d170` | v2가 리다이렉트하는 `/auth/oauth-link`, `/auth/oauth-complete`, `/auth/error` 라우트 파일이 없음. v1 연동은 `/auth/success#linking_required=true` 형식 (`app/auth/success.tsx:18-33`). web-internal 세션에 공유함 |
 
 ---
 
@@ -57,19 +106,31 @@ ea0f041 feat(env): add env validation + strict CSP headers + Turbopack root pin
 
 ## In-flight (paused)
 
-**없음**. Phase 1.1 깔끔히 마무리. code-reviewer 결과만 후행으로 확인 (필요 시 Phase 1.2 시작 전에 fix commit).
+**web-v2 전체가 보류 상태다.** 진행 중이던 코드 변경은 없고 작업 트리는 깨끗하다. 2026-10-24 세션은 문서만 고쳤다 (커밋 `0788ee4`, `21d1383`, 그리고 이 파일을 갱신한 커밋).
 
 ---
 
-## Next session — start here (Phase 1.2)
+## Next session — start here
 
-### 0. 컨텍스트 잡기 (5분)
+### 먼저 확인: 보류가 풀렸는가
+
+web-v2는 백엔드 전환이 끝날 때까지 보류 중이다. 아래 두 가지가 모두 맞을 때만 코드 작업을 재개한다.
+1. 사용자가 web-v2 재개를 지시했다.
+2. 백엔드 서비스 URL이 정해졌다 (조율 세션이나 사용자가 알려 준다).
+
+보류 중이라면 코드는 건드리지 않는다. 새로 받은 계약 변경이나 배포 정보만 이 파일과 `.claude/RULES.md`에 반영한다.
+
+### 0. 재개할 때 환경 복구 (5분)
 
 ```bash
-cd /Users/jsh14/Work/geek-chat/geek-chat-web-v2/.claude/worktrees/fervent-bell-35addf
+cd "$(git rev-parse --show-toplevel)"   # worktree 경로는 재활용될 때마다 바뀐다
 
 # 한눈에 상태
 bash .claude/skills/refresh-context/update.sh | head -40
+
+# worktree가 새로 만들어졌다면 node_modules와 .env.local이 없다
+memguard -- npm ci
+cp .env.example .env.local               # 값을 http://localhost:8080, ws://localhost:8080/ws로 바꾼다
 
 # dev 서버 띄워보기 (Phase 1.1 결과 확인)
 npm run dev
@@ -77,19 +138,19 @@ npm run dev
 # Ctrl+C로 종료
 ```
 
-읽을 문서 (총 ~25분):
-1. **이 파일 (SESSION_PROGRESS.md)** — 5분
-2. **`.claude/RULES.md`** — 5분 (R1-R10 binding rules)
-3. **`HANDOFF/AUTH_UX.md`** — 10분 (OAuth 4 콜백 와이어프레임)
-4. **`HANDOFF/API_INTEGRATION.md`** §3 — 5분 (OAuth hash format 재확인)
+읽을 문서 (총 ~30분):
+1. **이 파일 (SESSION_PROGRESS.md)**, 특히 "2026-10-24 세션 간 협업 결과" (5분)
+2. **`.claude/RULES.md`** R1, R2 (5분)
+3. **`HANDOFF/AUTH_UX.md`** (10분, OAuth 4 콜백 와이어프레임)
+4. **server-v2 `docs/API.md`와 `AuthController.kt`** (10분). 문서와 코드가 다르면 코드가 맞다
 
-### 1. 백엔드 dev 서버 + 수동 검증 (Phase 1.1 통합 테스트)
+### 1. 백엔드 로컬 실행 + 수동 검증 (Phase 1.1 통합 테스트)
 
-별도 터미널에서:
+별도 터미널에서 (정본은 server-v2 README의 "Local Development"):
 ```bash
 cd ~/Work/geek-chat/geek-chat-server-v2
-docker run -d -p 3306:3306 -e MYSQL_ROOT_PASSWORD=test -e MYSQL_DATABASE=geekchat mysql:8.0
-./gradlew bootRun --args='--spring.profiles.active=dev'
+docker compose -f docker-compose.dev.yml up -d
+./gradlew bootRun --args='--spring.profiles.active=local'   # dev-login은 dev, local 프로필에서만 열린다
 ```
 
 브라우저 콘솔에서 dev-login 토큰 주입 후 `/auth/me` REST 통합 확인:
@@ -111,7 +172,7 @@ curl -I http://localhost:3000 | grep -i 'content-security'
 
 | 우선순위 | 위치 | 항목 |
 |---|---|---|
-| LOW | `src/components/AppBoot.tsx:43-48` | 비-AuthExpiredError 발생 시 토큰을 localStorage에 잔류시키지 말고 store/storage 모두 정리하거나 SWR-style retry 추가 |
+| **MEDIUM** (LOW에서 올림) | `src/components/AppBoot.tsx:43-48` | 네트워크나 5xx로 `/auth/me`가 실패하면 "로그아웃 화면 + 토큰 남음"이 된다. Render 무료는 15분 유휴 후 잠들어서 (`MIGRATION.md:176`) 이 경로를 자주 탄다. 토큰을 지우면 일시 장애 때마다 로그아웃되므로, 재시도와 별도 상태(예: `offline`)로 처리하는 쪽을 권장 |
 | LOW | `src/lib/auth/oauthCallback.ts:22-32` | `parseAndClearHash()` 단일 헬퍼로 통합해 콜백 페이지가 `clearHash` 호출 빠뜨리지 않도록 강제 |
 | LOW | `next.config.ts:14` | `style-src 'unsafe-inline'` 재평가 — Tailwind v4 정적 stylesheet만 쓰면 제거 가능. Sonner 인라인 스타일 영향만 확인 |
 | LOW | `src/lib/api/auth.ts:devLogin` | `if (process.env.NODE_ENV !== "production")` gate로 prod bundle에서 dead-code 제거 |
@@ -131,6 +192,9 @@ OK 항목 (코드 리뷰 검증 통과 — 변경 불요):
 #### Step A. OAuth 콜백 페이지 4개 (~1.5시간)
 **모두 `'use client'` + `useEffect` mount + 즉시 `clearHash()` (RULES.md R1)**.
 
+- 콜백 페이지는 자기 경로의 키만 읽고, `link_token`과 `signup_token`은 토큰 저장소에 넣지 않는다 (RULES.md R1. v1이 실제로 키를 겹쳐 쓴 문제).
+- React 개발 모드의 StrictMode는 effect를 두 번 실행할 수 있다. 첫 실행에서 hash를 지우면 두 번째 실행이 빈 hash를 보고 `/auth/error`로 튕길 수 있으니 `useRef`로 한 번만 처리한다. ([가정] Next 16의 `reactStrictMode` 기본값은 재개할 때 `node_modules/next/dist/docs/`에서 확인)
+
 - `src/app/(public)/auth/success/page.tsx`
   - `parseHash()` → `{access_token, refresh_token}` (snake_case)
   - 누락 시 `/auth/error?error=oauth_failed`로 redirect
@@ -143,7 +207,7 @@ OK 항목 (코드 리뷰 검증 통과 — 변경 불요):
   - 두 버튼: "연동" → `linkProvider({linkToken, confirm:true})`, "거절" → `linkProvider({linkToken, confirm:false})`
   - 결과 분기:
     - `kind: "logged_in"` → `setSession` → `/rooms`
-    - `kind: "signup_required"` → `signup_token`/`suggested_nickname`을 들고 `/auth/oauth-complete`로 (state로 전달 또는 URL로)
+    - `kind: "signup_required"` → 공용 `CompleteSignupForm`을 같은 페이지에서 바로 보여 준다 (토큰을 URL에 다시 싣지 않는다)
 
 - `src/app/(public)/auth/oauth-complete/page.tsx`
   - parse: `{signup_token, suggested_nickname}` (URL-decoded)
@@ -151,11 +215,11 @@ OK 항목 (코드 리뷰 검증 통과 — 변경 불요):
   - submit → `completeOAuthSignup({signupToken, nickname})` → `setSession` → `/rooms`
 
 - `src/app/(public)/auth/error/page.tsx`
-  - parse query: `?error=...`
-  - 메시지 표시 + "다시 시도" → `/`
+  - parse query: `?error=...` (4종: `oauth_cancelled`, `missing_params`, `invalid_state`, `oauth_failed`. `AuthController.kt:100-112`)
+  - 코드별 한국어 메시지 표시 + "다시 시도" → `/`
 
 #### Step B. AuthGuard + (authed) layout (~30분)
-- `src/components/auth/AuthGuard.tsx`: `'use client'`, store status 구독. `unauthenticated` → `router.replace('/login')`. `loading`이면 Spinner. `authenticated`이면 children.
+- `src/components/auth/AuthGuard.tsx`: `'use client'`, store status 구독. `unauthenticated` → `router.replace('/login')`. `loading`이면 Spinner. `authenticated`이면 children. status는 1-bis에서 추가할 오프라인 상태까지 빠짐없이 처리한다 (v1은 `/me` 실패 뒤 `isAuthenticated=true, user=null`로 멈췄다).
 - `src/app/(authed)/layout.tsx`: `<AuthGuard>{children}</AuthGuard>`
 - 임시 `/rooms`: `src/app/(authed)/rooms/page.tsx` (placeholder "환영합니다 {user.nickname}" + 로그아웃 버튼) — Phase 2에서 진짜 채팅으로 대체
 
@@ -178,8 +242,11 @@ OK 항목 (코드 리뷰 검증 통과 — 변경 불요):
 
 | 항목 | 상태 |
 |---|---|
-| code-reviewer sub-agent 결과 | 백그라운드 — 다음 세션 진입 시 첫 5분에 확인하고 BLOCKER/HIGH 있으면 fix 후 진행 |
-| 모바일 전략 | ✅ `MOBILE_STRATEGY.md`로 결정됨 (M1 PWA, M2 RN+Expo) |
+| web-v2 재개 시점 | 사용자 결정 대기. 백엔드 전환이 먼저다 |
+| 백엔드 서비스 URL | 없음. Supabase 생성과 Render 연결은 사용자 계정으로만 할 수 있다 (`MIGRATION.md:175`) |
+| D1: Expo 앱을 지금 낼지, 웹 → PWA → Expo 순서를 따를지 | 사용자 결정 대기 (web-internal 세션 보고). `MOBILE_STRATEGY.md`는 이 결정 전에 쓴 초안이다 |
+| Vitest 도입 | 재개할 때 결정. "새 기능에는 테스트 최소 1개" 규칙상 Phase 1.2에 필요하다 |
+| code-reviewer 결과 | ✅ BLOCKER, HIGH, MEDIUM은 `a546205`에서 처리. 남은 항목은 1-bis 표 |
 | Phase 1.2 OAuth `linkProvider` 응답 분기 | ✅ `linkProviderResult` discriminated union 이미 `src/lib/api/auth.ts`에 구현됨 — 콜백 페이지에서 사용만 |
 
 ---
@@ -197,12 +264,13 @@ OK 항목 (코드 리뷰 검증 통과 — 변경 불요):
 
 ### 백엔드 (참고만, 수정 절대 금지)
 
-위치: `~/Work/geek-chat/geek-chat-server-v2/`
-- `AuthController.kt`: 12개 endpoint + OAuth callback 어셈블리 (line 124-143이 hash 포맷 핵심)
+위치: `~/Work/geek-chat/geek-chat-server-v2/` (멀티 모듈. 행 번호는 2026-10-24 HEAD `0ccf5c2` 기준)
+- `auth/.../presentation/web/AuthController.kt`: OAuth 콜백 리다이렉트 조립은 100-126행 (에러 4종, hash 3종)
 - `AuthDto.kt`: 모든 DTO (camelCase)
 - `ChatErrorMapping.kt`: HTTP 상태 코드 매핑
-- `WebSocketConfig.kt`: `/ws` 경로, `MAX_CONNECTIONS_PER_USER = 3`, `MIN_CONNECTION_INTERVAL_MS = 2000L`
-- 105+ tests passing
+- `websocket/.../infrastructure/config/WebSocketConfig.kt`: `/ws` 경로, 허용 Origin은 `FRONTEND_URL` 하나 (20행)
+- `websocket/.../infrastructure/WebSocketSessionManager.kt`: `MAX_CONNECTIONS_PER_USER = 3`, `MIN_CONNECTION_INTERVAL_MS = 2000L` (16-17행)
+- `websocket/.../presentation/ChatWebSocketHandler.kt`: 연결 거부 5가지가 모두 close 1008 (36-65행)
 
 ### refresh-context 스킬
 
@@ -213,12 +281,12 @@ OK 항목 (코드 리뷰 검증 통과 — 변경 불요):
 
 ### Worktree 정보
 
-- 위치: `geek-chat-web-v2/.claude/worktrees/fervent-bell-35addf/`
-- 브랜치: `claude/fervent-bell-35addf`
-- 머지 전략: PR로 부모 `main`에 merge (Phase 1.2 완료 후 또는 마일스톤 완료 후 결정)
+- 위치: 앱이 만든 worktree (`.claude/worktrees/<이름>`). 이름은 재활용될 때마다 바뀌니 `git rev-parse --show-toplevel`로 확인한다.
+- 브랜치: `claude/fervent-bell-35addf`. 2026-10-24 기준 로컬 `main`과 `origin/main`은 `9ca9c61`이다.
+- 2026-10-24 문서 커밋 3개는 이 브랜치에만 있다. `main` 반영과 push는 사용자가 직접 한다 (에이전트 push는 막혀 있다).
 
 ---
 
 ## 한 줄 요약
 
-> **Phase 1.1 완료 (6 commits, build/lint/tsc 통과). 다음 세션은 SESSION_PROGRESS.md의 "Phase 1.2 — OAuth 콜백" 섹션 따라 진행. 끝날 때 refresh-context 스킬 호출 필수.**
+> **web-v2는 Phase 1.1까지 구현한 상태로 보류 중이다. 재개 조건(사용자 지시 + 백엔드 URL)을 먼저 확인하고, 재개하면 환경 복구 → 1-bis → Phase 1.2 순서로 진행한다. 끝날 때 refresh-context 스킬 호출 필수.**
