@@ -8,7 +8,7 @@
 
 **보류 중 (2026-10-24부터)**. Phase 1.1 인증까지 구현된 상태에서 멈춰 있다. 사용자가 승인한 전환 계획에 따라 백엔드(server-v2) 운영 전환과 v1 Expo(`geek-chat-web`) 통신 계층 수정을 먼저 하고, web-v2 기능 작업은 그다음에 재개한다. 재개하면 Phase 1.2부터 시작한다.
 
-Phase 1.1 결과: Next.js 16 + React 19 + Tailwind v4 위에 인증 인프라(env와 CSP, 토큰 저장소, single-flight refresh, Zustand 스토어, 인증 폼, 랜딩과 로그인, 가입 페이지). 2026-05 기준 tsc, lint, build 모두 exit 0.
+Phase 1.1 결과: Next.js 16 + React 19 + Tailwind v4 위에 인증 인프라(env와 CSP, 토큰 저장소, single-flight refresh, Zustand 스토어, 인증 폼, 랜딩과 로그인, 가입 페이지). 코드는 2026-05 이후 그대로이고, 2026-10-25에 `npm ci` 후 tsc, lint, build를 다시 돌려 모두 exit 0이었다 (정적 라우트 `/`, `/login`, `/signup`, `/_not-found`).
 
 ## Stack 실제 버전
 
@@ -42,7 +42,9 @@ Phase 1.1 결과: Next.js 16 + React 19 + Tailwind v4 위에 인증 인프라(en
 | Complete project prompt with technical specifications | (조율) | 데이터 이관과 전환 조율 |
 | 이 저장소 (web-v2) | `geek-chat-web-v2` | **보류**. 문서 정리만 함. 다른 저장소는 읽기만 함 |
 
-### 직접 검증한 계약 사실 (server-v2 HEAD `0ccf5c2`, 읽기만 함)
+### 직접 검증한 계약 사실 (server-v2 `0ccf5c2`에서 검증, 읽기만 함)
+
+2026-10-25에 server-v2 `a0995cc`에서 다시 봤다. 아래에 인용한 Kotlin 파일은 바뀌지 않았다. 문서만 바뀌었는데, `API.md`가 OAuth 에러 코드 4종을 적게 됐고 `WEBSOCKET.md`에서는 코드에 없던 `AUTH_ERROR` 행이 빠졌다.
 
 | 항목 | 근거 | web-v2 영향 |
 |---|---|---|
@@ -53,6 +55,7 @@ Phase 1.1 결과: Next.js 16 + React 19 + Tailwind v4 위에 인증 인프라(en
 | WS 연결 거부 5가지(NO_TOKEN, TOKEN_EXPIRED, INVALID_TOKEN, RATE_LIMITED, MAX_CONNECTIONS)가 모두 close 1008 | `ChatWebSocketHandler.kt:36-65` | 1008은 직전 `error.code`로 분기. 정본은 `.claude/RULES.md` R2 |
 | 연결 상한 3, 재연결 최소 간격 2초 | `WebSocketSessionManager.kt:16-17` | 백오프는 2초부터 |
 | WS Origin과 OAuth 리다이렉트 대상이 `FRONTEND_URL` 하나 | `WebSocketConfig.kt:20`, `AuthController.kt:100-126` | preview 배포에서 WS 불가. v1 Expo에서 web-v2로 바꿀 때 `FRONTEND_URL`도 같이 바꿔야 함 |
+| Render에서는 REST CORS도 `FRONTEND_URL` 하나 | `AppProperties.kt:11` 기본값이 빈 목록, `render.yaml`(a0995cc)에 패턴 키 없음 | preview에서 REST를 쓰려면 Render에 `APP_FRONTEND_ORIGIN_PATTERNS`를 따로 넣어야 함 |
 | 배포 대상은 Render 무료 + Supabase Postgres, 아직 배포 전 | `docs/MIGRATION.md:166-175` | `connect-src`는 이미 env로 만듦 (`next.config.ts:6-7, 18`). URL이 정해지면 Vercel env만 넣으면 됨 |
 
 ### v1 세션이 알려 준 인증 함정 (web-v2 반영 상태)
@@ -64,11 +67,22 @@ Phase 1.1 결과: Next.js 16 + React 19 + Tailwind v4 위에 인증 인프라(en
 | 저장소와 스토어의 토큰이 어긋남 | 이미 피함. 스토어는 토큰을 갖지 않고 (`store/auth.ts:22-32`) 실패는 `clearSession()`으로 모인다 (`AppBoot.tsx:54-58`) |
 | `/auth/me` 실패를 조용히 삼킴 | 삼키지는 않지만 네트워크 오류 때 "로그아웃 화면 + 토큰 남음"이 된다 (`AppBoot.tsx:43-48`). 아래 1-bis 표에서 우선순위를 올림 |
 
+### RULES.md R2 교차 검토 (2026-10-25, web-internal 세션 검토를 조율 세션이 전달)
+
+원본 코드와 다른 사실은 없었고, 보완점 3개를 받았다. 4번째는 이쪽에서 server-v2 문서를 다시 읽다가 찾았다.
+
+| 항목 | 반영 |
+|---|---|
+| 백오프를 `onopen`에서 되돌리면 거부될 연결도 먼저 열리므로 백오프가 2초에 묶이고, refresh 1회 제한도 매번 풀린다 | R2에 "10초 유지되거나 error가 아닌 메시지가 오면 되돌린다" 규칙 추가, `API_INTEGRATION.md` 샘플 수정 |
+| 서버는 연결을 받을 때만 토큰을 검사하므로 연결 전에 exp를 보고 미리 갱신하면 TOKEN_EXPIRED 왕복이 준다 | R2에 선택 규칙으로 추가 |
+| `room_expired`, `message_burned` 처리가 R2에 없다 | R2에 추가. `burnAfterRead`는 누구나 보낼 수 있어서 web-v2가 보내지 않아도 처리해야 한다 |
+| 재연결 직후 놓친 메시지를 forward cursor 조회로 채워야 한다 (`WEBSOCKET.md` §6) | R2에 추가 |
+
 ### 사용자에게 보고만 한 것 (다른 저장소, 담당은 사용자가 정함)
 
 | # | 위치 | 문제 |
 |---|---|---|
-| S1 | server-v2 `docs/WEBSOCKET.md:166-167` | 샘플이 1008을 일괄 refresh로 안내 |
+| S1 | server-v2 `docs/WEBSOCKET.md:163-167` (a0995cc) | 샘플이 1008을 일괄 refresh로 안내하고, `onopen`에서 백오프를 0으로 되돌린다 |
 | S2 | server-v2 `WebSocketConfig.kt:20` | WS Origin이 `FRONTEND_URL` 하나라 preview 배포에서 WS 불가 |
 | S3 | 워크스페이스 `geek-chat/CLAUDE.md` | MySQL, 친구 클라우드, Next.js 15로 적혀 있어 낡음 |
 | S4 | server-v2 `README.md:30` | `local` 프로필을 MySQL로 설명하지만 `application-local.yml:11-14`은 PostgreSQL |
@@ -106,7 +120,7 @@ ea0f041 feat(env): add env validation + strict CSP headers + Turbopack root pin
 
 ## In-flight (paused)
 
-**web-v2 전체가 보류 상태다.** 진행 중이던 코드 변경은 없고 작업 트리는 깨끗하다. 2026-10-24 세션은 문서만 고쳤다 (커밋 `0788ee4`, `21d1383`, 그리고 이 파일을 갱신한 커밋).
+**web-v2 전체가 보류 상태다.** 진행 중이던 코드 변경은 없고 작업 트리는 깨끗하다. 2026-10-24와 10-25 세션은 문서만 고쳤다 (`git log 9ca9c61..HEAD`로 볼 수 있다).
 
 ---
 
@@ -264,7 +278,7 @@ OK 항목 (코드 리뷰 검증 통과 — 변경 불요):
 
 ### 백엔드 (참고만, 수정 절대 금지)
 
-위치: `~/Work/geek-chat/geek-chat-server-v2/` (멀티 모듈. 행 번호는 2026-10-24 HEAD `0ccf5c2` 기준)
+위치: `~/Work/geek-chat/geek-chat-server-v2/` (멀티 모듈. 행 번호는 `0ccf5c2` 기준이고 `a0995cc`에서도 그대로다)
 - `auth/.../presentation/web/AuthController.kt`: OAuth 콜백 리다이렉트 조립은 100-126행 (에러 4종, hash 3종)
 - `AuthDto.kt`: 모든 DTO (camelCase)
 - `ChatErrorMapping.kt`: HTTP 상태 코드 매핑
@@ -283,7 +297,7 @@ OK 항목 (코드 리뷰 검증 통과 — 변경 불요):
 
 - 위치: 앱이 만든 worktree (`.claude/worktrees/<이름>`). 이름은 재활용될 때마다 바뀌니 `git rev-parse --show-toplevel`로 확인한다.
 - 브랜치: `claude/fervent-bell-35addf`. 2026-10-24 기준 로컬 `main`과 `origin/main`은 `9ca9c61`이다.
-- 2026-10-24 문서 커밋 3개는 이 브랜치에만 있다. `main` 반영과 push는 사용자가 직접 한다 (에이전트 push는 막혀 있다).
+- 2026-10-24와 10-25 문서 커밋은 이 브랜치에만 있다 (`git log 9ca9c61..HEAD`). `main` 반영과 push는 사용자가 직접 한다 (에이전트 push는 막혀 있다).
 
 ---
 
