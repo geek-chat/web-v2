@@ -158,7 +158,7 @@ OAuth 셋업 없이도 인증된 상태로 모든 기능 테스트 가능. 프�
 | OAuth callback에서 hash가 사라짐 | 페이지 mount 직후 즉시 파싱 + replaceState. SSR 컴포넌트로 만들면 안 됨 |
 | 401 시 무한 refresh 루프 | 단일-플라이트 큐 + 1회만 재시도 |
 | WS 재연결 폭주 | 2초부터 시작하는 지수 백오프 (cap 30초) + intentionalClose 플래그. 1008은 직전 `error.code`로 분기 (`.claude/RULES.md` R2) |
-| Vercel preview deploy CORS 차단 | REST는 `FRONTEND_ORIGIN_PATTERNS`(docker-compose 기본 `https://*.vercel.app`)로 허용된다. Render 설정은 확인 필요. WS는 `FRONTEND_URL` 하나만 허용해서 preview에서는 열리지 않는다 |
+| Vercel preview deploy CORS 차단 | docker-compose는 `https://*.vercel.app` 패턴을 기본으로 넣어 REST를 허용한다. Render는 패턴 기본값이 비어 있어서 `APP_FRONTEND_ORIGIN_PATTERNS`를 넣지 않으면 REST도 막힌다. WS는 어느 쪽이든 `FRONTEND_URL` 하나만 허용해서 preview에서는 열리지 않는다 |
 | `crypto.randomUUID()` SSR 에러 | `'use client'` 컴포넌트 안에서만 호출 |
 | Hydration mismatch (다크모드) | `next-themes` 또는 mount 후 `setMounted(true)` 패턴 |
 

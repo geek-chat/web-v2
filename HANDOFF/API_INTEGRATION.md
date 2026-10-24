@@ -226,12 +226,13 @@ wss://api.<domain>/ws?token=<access_token>      // prod
 | type | data | 처리 |
 |---|---|---|
 | `message_ack` | `{clientMessageId, serverId}` | optimistic UI에서 임시 메시지를 `serverId`로 교체 |
-| `new_message` | `{id, roomId, senderId, content, type, createdAt, expiresAt}` | 메시지 리스트에 추가 |
+| `new_message` | `{id, roomId, senderId, content, type, createdAt, expiresAt, replyToMessageId, burnAfterRead}` | 메시지 리스트에 추가. `replyToMessageId`가 있으면 인용 표시 |
 | `typing_indicator` | `{roomId, userId}` | 3초 동안 "입력 중..." 표시 |
 | `read_update` | `{roomId, userId, lastReadAt}` | 읽음 표시 갱신 |
 | `room_expiring` | `{roomId, roomName, expiresAt}` | 만료 10분 전 토스트 |
 | `room_expired` | `{roomId, roomName}` | 방 목록에서 제거 |
 | `message_expired` | `{roomId, messageIds}` | 해당 메시지 UI 제거 |
+| `message_burned` | `{roomId, messageId}` | 해당 메시지 즉시 제거 (M2 Burn-on-Read, 발신자에게도 온다) |
 | `error` | `{code, message}` | 에러별 처리 (아래 표) |
 
 ### 에러 코드
@@ -259,6 +260,7 @@ type Handler = (data: any) => void
 
 const MIN_RECONNECT_MS = 2000 // 서버 MIN_CONNECTION_INTERVAL_MS (WebSocketSessionManager.kt:17)
 const MAX_RECONNECT_MS = 30000
+const STABLE_AFTER_MS = 10000 // 이만큼 열려 있거나 error가 아닌 메시지가 오면 정상 연결로 본다
 
 export class ChatWebSocketClient {
   private ws: WebSocket | null = null
@@ -268,25 +270,30 @@ export class ChatWebSocketClient {
   private intentionalClose = false
   private lastErrorCode: string | null = null
   private authRetried = false
+  private stableTimer: ReturnType<typeof setTimeout> | undefined
 
   connect() {
+    // (선택) 곧 만료될 토큰이면 연결 전에 refreshOnce()로 먼저 갱신한다 (RULES.md R2)
     // 토큰은 시도할 때마다 storage에서 읽는다. 갱신 전에 잡아 둔 값으로 붙지 않게 한다
     const url = `${env.NEXT_PUBLIC_WS_URL}?token=${getAccessToken()}`
     this.lastErrorCode = null
     this.ws = new WebSocket(url)
 
     this.ws.onopen = () => {
-      this.reconnectMs = MIN_RECONNECT_MS
-      this.authRetried = false
+      // 여기서 백오프를 되돌리지 않는다. 서버는 연결을 연 뒤에 검사해서
+      // 거부될 연결도 onopen이 먼저 불리고, 그다음 error와 close 1008이 온다
+      this.stableTimer = setTimeout(() => this.markStable(), STABLE_AFTER_MS)
     }
 
     this.ws.onmessage = (e) => {
       const { type, data } = JSON.parse(e.data)
       if (type === 'error') this.lastErrorCode = data.code
+      else this.markStable()
       this.handlers.get(type)?.forEach((h) => h(data))
     }
 
     this.ws.onclose = (e) => {
+      clearTimeout(this.stableTimer)
       if (this.intentionalClose) return
 
       if (e.code === 1008) {
@@ -307,6 +314,13 @@ export class ChatWebSocketClient {
       // 그 외 종료 → 2초부터 시작하는 지수 백오프
       this.scheduleReconnect()
     }
+  }
+
+  // 정상 연결이 확인됐을 때만 백오프와 refresh 1회 제한을 되돌린다 (RULES.md R2)
+  private markStable() {
+    clearTimeout(this.stableTimer)
+    this.reconnectMs = MIN_RECONNECT_MS
+    this.authRetried = false
   }
 
   private scheduleReconnect() {

@@ -34,6 +34,7 @@ If your training is on v15/v3/v8, read `node_modules/next/dist/docs/` or run `np
 - One singleton `ChatWSClient` instance per app, stored in Zustand (`src/store/ws.ts`). Backend caps at 3 connections per user. Provider pattern is forbidden.
 - Keep event listeners on the long-lived `ChatWSClient` wrapper and re-bind `onmessage`/`onclose` on every new `WebSocket` instance. A raw WebSocket is replaced on each reconnect, so listeners attached to the old instance are lost (root cause of a v1 regression).
 - Read the access token from storage on every connect attempt, never from a value captured before a refresh.
+- The server validates the JWT only while accepting the connection (`ChatWebSocketHandler.kt:43` is the websocket module's only `validateToken` call; there is no handshake interceptor). Optional: before connecting, if `isExpiringSoon(token)` is true, refresh first through the shared single-flight refresh. That saves the `TOKEN_EXPIRED` round trip and its reconnect wait.
 - WS must refresh through the **same** single-flight refresh as `apiFetch` (export it from `src/lib/api/client.ts`). The server rotates refresh tokens, so a second refresh path racing the first invalidates one of them and logs the user out.
 
 The server closes with `1008` (POLICY_VIOLATION) for five different causes (server-v2 `ChatWebSocketHandler.kt:36-65`; it uses no other close status). The cause arrives only in the `error` event sent just before the close, so branch on the **last `error.code`**, never on the close code alone:
@@ -47,10 +48,14 @@ The server closes with `1008` (POLICY_VIOLATION) for five different causes (serv
 
 - `1000` with the `intentionalClose` flag set → no reconnect.
 - Any other close (1006, 1011, …) → exponential backoff **starting at 2s** (2s → 4s → 8s … cap 30s) with jitter. The server rejects a reconnect within 2s per user (`MIN_CONNECTION_INTERVAL_MS = 2000`, `WebSocketSessionManager.kt:17`), so a 1s first retry always fails.
+- Reset the backoff and the refresh-once guard only after the connection proves stable: it stayed open for 10s, or a message other than `error` arrived. **Never reset in `onopen`.** The server runs its checks after the handshake (`afterConnectionEstablished`, `ChatWebSocketHandler.kt:34-65`), so a rejected connection fires `onopen` first and then receives `error` + close 1008. Resetting there pins the backoff at 2s and re-arms the refresh-once guard on every attempt, which turns `INVALID_TOKEN` into an endless refresh loop. The server-v2 sample (`docs/WEBSOCKET.md:163`) resets in `onopen`; don't copy that line.
+- After a reconnect is accepted, backfill every loaded room with `GET /api/rooms/:id/messages?direction=forward&cursor=<createdAt of the newest message held>` (cursor is ISO-8601, server `docs/API.md` §3.3) and dedupe by message id, as the server doc recommends (`docs/WEBSOCKET.md` §6). Trigger it after acceptance, not in `onopen`, since rejected connections fire `onopen` too.
 - If the server adopts distinct 4000-range close codes per cause, check the close code first and keep `error.code` as the fallback.
-- The WS handshake Origin is allowlisted to a single `FRONTEND_URL` (`WebSocketConfig.kt:20`), unlike REST CORS which also accepts origin patterns. Vercel preview deploys cannot open WS.
+- The WS handshake Origin is allowlisted to a single `FRONTEND_URL` (`WebSocketConfig.kt:20`), unlike REST CORS which also accepts origin patterns. Vercel preview deploys cannot open WS. On Render even REST allows only `FRONTEND_URL`: `render.yaml` sets no patterns and the default is an empty list (`AppProperties.kt:11`), unless `APP_FRONTEND_ORIGIN_PATTERNS` is added in the dashboard.
 - `room_expiring` (10 min before TTL expiry) → toast + UI banner.
+- `room_expired` `{roomId, roomName}` → remove the room from the list; if it is the open room, toast and navigate to `/rooms`.
 - `message_expired` (batch hard delete from server) → remove from local store + toast.
+- `message_burned` `{roomId, messageId}` (M2 Burn-on-Read) → remove the message immediately. Any client can send `burnAfterRead: true` in `send_message` and the event also reaches the sender, so handle it even if web-v2 never sends such messages (server `docs/WEBSOCKET.md` §4.8).
 
 ## R3. Server vs Client components
 
