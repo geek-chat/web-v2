@@ -86,6 +86,8 @@ Phase 1.1 결과: Next.js 16 + React 19 + Tailwind v4 위에 인증 인프라(en
 | S2 | server-v2 `WebSocketConfig.kt:20` | WS Origin이 `FRONTEND_URL` 하나라 preview 배포에서 WS 불가 |
 | S3 | 워크스페이스 `geek-chat/CLAUDE.md` | MySQL, 친구 클라우드, Next.js 15로 적혀 있어 낡음 |
 | S4 | server-v2 `README.md:30` | `local` 프로필을 MySQL로 설명하지만 `application-local.yml:11-14`은 PostgreSQL |
+| S5 | server-v2 `render.yaml`, `AppProperties.kt:11` | Render에서는 REST CORS도 `FRONTEND_URL` 하나만 허용한다 (패턴 기본값이 빈 목록). preview 배포는 REST도 실패한다 |
+| S6 | server-v2 `SpringDataMessageRepository.kt:22-29` | 메시지 cursor 페이징에 id 보조 정렬이 없어서, 같은 `createdAt`을 가진 메시지가 페이지 경계에서 빠질 수 있다 (가능성 낮음) |
 | T1 | `geek-chat-web` main `559d170` | v2가 리다이렉트하는 `/auth/oauth-link`, `/auth/oauth-complete`, `/auth/error` 라우트 파일이 없음. v1 연동은 `/auth/success#linking_required=true` 형식 (`app/auth/success.tsx:18-33`). web-internal 세션에 공유함 |
 
 ---
@@ -160,7 +162,7 @@ npm run dev
 
 ### 1. 백엔드 로컬 실행 + 수동 검증 (Phase 1.1 통합 테스트)
 
-별도 터미널에서 (정본은 server-v2 README의 "Local Development"):
+별도 터미널에서 (server-v2 `docker-compose.dev.yml` 머리말의 절차와 같다. 2026-10-25에 a0995cc 기준으로 compose의 Postgres 5433과 `application-local.yml` 기본값이 맞는지 읽어서 확인했고, 실행은 하지 않았다. README의 MySQL 설명은 낡았다, S4):
 ```bash
 cd ~/Work/geek-chat/geek-chat-server-v2
 docker compose -f docker-compose.dev.yml up -d

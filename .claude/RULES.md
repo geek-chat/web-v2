@@ -49,7 +49,7 @@ The server closes with `1008` (POLICY_VIOLATION) for five different causes (serv
 - `1000` with the `intentionalClose` flag set → no reconnect.
 - Any other close (1006, 1011, …) → exponential backoff **starting at 2s** (2s → 4s → 8s … cap 30s) with jitter. The server rejects a reconnect within 2s per user (`MIN_CONNECTION_INTERVAL_MS = 2000`, `WebSocketSessionManager.kt:17`), so a 1s first retry always fails.
 - Reset the backoff and the refresh-once guard only after the connection proves stable: it stayed open for 10s, or a message other than `error` arrived. **Never reset in `onopen`.** The server runs its checks after the handshake (`afterConnectionEstablished`, `ChatWebSocketHandler.kt:34-65`), so a rejected connection fires `onopen` first and then receives `error` + close 1008. Resetting there pins the backoff at 2s and re-arms the refresh-once guard on every attempt, which turns `INVALID_TOKEN` into an endless refresh loop. The server-v2 sample (`docs/WEBSOCKET.md:163`) resets in `onopen`; don't copy that line.
-- After a reconnect is accepted, backfill every loaded room with `GET /api/rooms/:id/messages?direction=forward&cursor=<createdAt of the newest message held>` (cursor is ISO-8601, server `docs/API.md` §3.3) and dedupe by message id, as the server doc recommends (`docs/WEBSOCKET.md` §6). Trigger it after acceptance, not in `onopen`, since rejected connections fire `onopen` too.
+- After a reconnect is accepted, backfill every loaded room with `GET /api/rooms/:id/messages?direction=forward&cursor=<createdAt of the newest message held>` (cursor is ISO-8601, server `docs/API.md` §3.3), as the server doc recommends (`docs/WEBSOCKET.md` §6). Trigger it after acceptance, not in `onopen`, since rejected connections fire `onopen` too. `limit` caps at 100, so keep paging with `cursor` = the last item's `createdAt` until a page comes back shorter than `limit`. Dedupe by message id, because live `new_message` events can overlap the backfill. The server query is `createdAt > :cursor ORDER BY createdAt ASC` with no id tiebreaker (`SpringDataMessageRepository.kt:22-29`), so messages sharing one timestamp at a page boundary can be skipped (reported as S6, server side).
 - If the server adopts distinct 4000-range close codes per cause, check the close code first and keep `error.code` as the fallback.
 - The WS handshake Origin is allowlisted to a single `FRONTEND_URL` (`WebSocketConfig.kt:20`), unlike REST CORS which also accepts origin patterns. Vercel preview deploys cannot open WS. On Render even REST allows only `FRONTEND_URL`: `render.yaml` sets no patterns and the default is an empty list (`AppProperties.kt:11`), unless `APP_FRONTEND_ORIGIN_PATTERNS` is added in the dashboard.
 - `room_expiring` (10 min before TTL expiry) → toast + UI banner.
@@ -104,7 +104,7 @@ The server closes with `1008` (POLICY_VIOLATION) for five different causes (serv
 - `npx tsc --noEmit` passes.
 - `npm run lint` passes.
 - `npm run build` passes.
-- For chat features: 2-tab manual test against the backend `local` profile (server-v2 README "Local Development"; dev-login is enabled only in the `dev` and `local` profiles).
+- For chat features: 2-tab manual test against the backend `local` profile (steps in the header of server-v2 `docker-compose.dev.yml`; its README describes the local DB as MySQL, which is stale, see S4; dev-login is enabled only in the `dev` and `local` profiles).
 
 ## R10. Never do
 
