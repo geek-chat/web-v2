@@ -99,7 +99,7 @@ geek-chat-web-v2/
     │   ├── ws/
     │   │   ├── client.ts                # ChatWSClient class
     │   │   ├── envelope.ts              # 타입 가드
-    │   │   └── reconnect.ts             # 백오프 + 1008 refresh
+    │   │   └── reconnect.ts             # 백오프 + 1008 원인별 분기 (RULES.md R2)
     │   ├── auth/
     │   │   ├── storage.ts               # localStorage
     │   │   ├── jwt.ts                   # decode payload (만료 사전 체크)
@@ -147,10 +147,10 @@ geek-chat-web-v2/
       → onmessage → 이벤트 type별로 해당 store 업데이트
         - new_message → store/messages.ts append
         - room_expiring → store/ws.ts.expiringRooms 추가
-      → onclose
+      → onclose (처리 규칙 정본: .claude/RULES.md R2)
         - code 1000 (정상) + intentionalClose → 재연결 X
-        - code 1008 (POLICY_VIOLATION) → /auth/refresh → 재연결
-        - 그 외 → 백오프 (1s → 2s → 4s → ... cap 30s)
+        - code 1008 → close 직전 error.code로 분기 (TOKEN_EXPIRED만 refresh, RATE_LIMITED는 2초 이상 대기, MAX_CONNECTIONS는 재연결 X)
+        - 그 외 → 백오프 (2s → 4s → 8s → ... cap 30s, jitter)
 ```
 
 **Why Zustand 싱글톤**: WebSocket은 글로벌 자원. Provider 패턴은 (1) React 트리 밖에서 접근 불가, (2) 이벤트마다 Provider 리렌더, (3) App Router 네비 시 unmount 영향. Zustand에 1개만 두고 모두 구독.
@@ -299,7 +299,7 @@ OAuth 콜백 4종 (필수 구현):
 ## 8. WebSocket 동시 연결 제한
 
 - 백엔드: user당 max **3** 연결.
-- 4개째 탭은 1008/MAX_CONNECTIONS → 토스트로 안내.
+- 4개째 탭은 1008 + MAX_CONNECTIONS → 재연결하지 않고 토스트로 안내 (RULES.md R2).
 - 재연결 rate limit: 2초 간격.
 
 ---

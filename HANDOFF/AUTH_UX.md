@@ -254,15 +254,17 @@ async function fetchWithAuth(url: string, options: RequestInit = {}) {
 
 ### WebSocket 토큰 만료 — Reactive 방식
 
+> 처리 규칙 정본은 `.claude/RULES.md` R2이고, 아래는 요약이다. 예전 샘플에 있던 `4001`은 서버가 쓰지 않는 코드라 뺐다 (server-v2 WS는 `POLICY_VIOLATION`으로만 끊는다).
+
 ```typescript
 ws.onclose = (e) => {
-  if (e.code === 1008 || e.code === 4001) {
-    // 인증 실패 → refresh 후 재연결
-    refreshToken().then(() => reconnect())
-  } else {
-    // 일반 종료 → 백오프 후 재연결
-    setTimeout(reconnect, backoffMs())
+  if (e.code === 1008) {
+    // 1008은 원인 다섯 개가 함께 쓴다. close 직전 error 이벤트의 code로 나눈다
+    if (lastErrorCode === 'MAX_CONNECTIONS') return notifyTooManyConnections() // 재연결 안 함
+    if (lastErrorCode === 'RATE_LIMITED') return scheduleReconnect() // refresh 없이 2초 이상 대기
+    return refreshOnceThenReconnect() // TOKEN_EXPIRED 등. apiFetch와 같은 single-flight 갱신
   }
+  scheduleReconnect() // 그 외 종료: 2초부터 시작하는 백오프 + jitter
 }
 ```
 

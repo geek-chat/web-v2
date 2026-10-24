@@ -139,10 +139,10 @@ npm run dev
 
 2. **WebSocket 클라이언트** (2시간)
    - `src/lib/ws/envelope.ts` — 타입 가드 (isNewMessage(data) 등)
-   - `src/lib/ws/reconnect.ts` — 백오프 (1s → 2s → ... cap 30s)
-   - `src/lib/ws/client.ts` — ChatWSClient 클래스 (API_INTEGRATION.md §5)
-     - `connect(token)`, `send(type, data)`, `on(type, handler)`, `close()`
-     - 1008 처리: refresh + 재연결
+   - `src/lib/ws/reconnect.ts`: 백오프 (2s → 4s → ... cap 30s, jitter). 서버가 2초 안의 재연결을 거부한다
+   - `src/lib/ws/client.ts`: ChatWSClient 클래스 (API_INTEGRATION.md §5)
+     - `connect()`, `send(type, data)`, `on(type, handler)`, `close()`
+     - 1008 처리: close 직전 `error.code`로 분기 (정본: `.claude/RULES.md` R2)
      - close code 1011/그 외: 백오프 재연결
 
 3. **Store: rooms / messages / ws** (1시간)

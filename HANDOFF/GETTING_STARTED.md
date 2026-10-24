@@ -157,7 +157,7 @@ OAuth 셋업 없이도 인증된 상태로 모든 기능 테스트 가능. 프�
 |---|---|
 | OAuth callback에서 hash가 사라짐 | 페이지 mount 직후 즉시 파싱 + replaceState. SSR 컴포넌트로 만들면 안 됨 |
 | 401 시 무한 refresh 루프 | 단일-플라이트 큐 + 1회만 재시도 |
-| WS 재연결 폭주 | 지수 백오프 (cap 30초) + intentionalClose 플래그 |
+| WS 재연결 폭주 | 2초부터 시작하는 지수 백오프 (cap 30초) + intentionalClose 플래그. 1008은 직전 `error.code`로 분기 (`.claude/RULES.md` R2) |
 | Vercel preview deploy CORS 차단 | 백엔드 `FRONTEND_ORIGIN_PATTERNS=https://*.vercel.app` 등록되어 있음 |
 | `crypto.randomUUID()` SSR 에러 | `'use client'` 컴포넌트 안에서만 호출 |
 | Hydration mismatch (다크모드) | `next-themes` 또는 mount 후 `setMounted(true)` 패턴 |

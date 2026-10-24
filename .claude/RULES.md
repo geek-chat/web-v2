@@ -21,16 +21,34 @@ If your training is on v15/v3/v8, read `node_modules/next/dist/docs/` or run `np
 - Tokens live in **localStorage**. Keys: `access_token`, `refresh_token`.
 - All HTTP must go through `src/lib/api/client.ts` `apiFetch()`. Direct `fetch()` is forbidden (breaks 401 handling).
 - 401 from any endpoint triggers **single-flight refresh**: only one refresh in flight, all pending requests await the same Promise. On refresh failure → `clearTokens()` + redirect to `/login`.
-- OAuth fragment parsing **must be client-side only**: `'use client'` + `useEffect`. Call `clearHash()` (`history.replaceState`) immediately on mount to prevent referer leaks.
+- OAuth fragment parsing **must be client-side only**: `'use client'` + `useEffect`. Call `clearHash()` (`history.replaceState`) immediately on mount so tokens don't stay in the address bar or browser history. (Fragments are never sent in the `Referer` header; history and third-party scripts reading `location` are the real exposure.)
+- Each OAuth callback page reads **only its own path's keys**: `/auth/success` → `access_token`, `refresh_token`; `/auth/oauth-link` → `link_token`, `existing_nickname`, `new_provider`; `/auth/oauth-complete` → `signup_token`, `suggested_nickname`. `link_token` and `signup_token` are one-time credentials and are **never** written to token storage. (v1 reused the `access_token` key for the link token; v2 separates paths and keys, keep it that way.)
+- Token storage (`src/lib/auth/storage.ts`) is the only token source. The Zustand store holds `status` and `user`, never tokens. Every terminal auth failure goes through `clearSession()`, directly or via the `auth:logout` event, so storage and store never disagree.
+- `/auth/me` failures are never swallowed. Auth expiry → `clearSession()`. A network or 5xx failure (e.g. a Render free-tier cold start) must not leave "logged-out UI with tokens still stored". This is an open item, see the carry-over table in `HANDOFF/SESSION_PROGRESS.md`.
 - `clientMessageId` for `send_message` events: `crypto.randomUUID()` wrapped with `typeof window` guard for SSR safety.
 
 ## R2. WebSocket
 
+**This section is the single source of truth for WS connection and reconnect handling.** Other docs summarize it and point here.
+
 - One singleton `ChatWSClient` instance per app, stored in Zustand (`src/store/ws.ts`). Backend caps at 3 connections per user. Provider pattern is forbidden.
-- Reconnect on close codes:
-  - `1000` + `intentionalClose` flag → no reconnect
-  - `1008` (POLICY_VIOLATION) → refresh token → reconnect
-  - others → exponential backoff (1s → 2s → 4s … cap 30s)
+- Keep event listeners on the long-lived `ChatWSClient` wrapper and re-bind `onmessage`/`onclose` on every new `WebSocket` instance. A raw WebSocket is replaced on each reconnect, so listeners attached to the old instance are lost (root cause of a v1 regression).
+- Read the access token from storage on every connect attempt, never from a value captured before a refresh.
+- WS must refresh through the **same** single-flight refresh as `apiFetch` (export it from `src/lib/api/client.ts`). The server rotates refresh tokens, so a second refresh path racing the first invalidates one of them and logs the user out.
+
+The server closes with `1008` (POLICY_VIOLATION) for five different causes (server-v2 `ChatWebSocketHandler.kt:36-65`; it uses no other close status). The cause arrives only in the `error` event sent just before the close, so branch on the **last `error.code`**, never on the close code alone:
+
+| last `error.code` before close | client action |
+|---|---|
+| `TOKEN_EXPIRED` | shared single-flight refresh, then reconnect after the minimum interval |
+| `INVALID_TOKEN`, `NO_TOKEN`, or no `error` event | refresh once; if the next attempt fails the same way, `clearSession()` + `/login` |
+| `RATE_LIMITED` | no refresh; wait at least 2s plus jitter, then reconnect |
+| `MAX_CONNECTIONS` | do not reconnect; toast asking to close another tab, offer a manual retry |
+
+- `1000` with the `intentionalClose` flag set → no reconnect.
+- Any other close (1006, 1011, …) → exponential backoff **starting at 2s** (2s → 4s → 8s … cap 30s) with jitter. The server rejects a reconnect within 2s per user (`MIN_CONNECTION_INTERVAL_MS = 2000`, `WebSocketSessionManager.kt:17`), so a 1s first retry always fails.
+- If the server adopts distinct 4000-range close codes per cause, check the close code first and keep `error.code` as the fallback.
+- The WS handshake Origin is allowlisted to a single `FRONTEND_URL` (`WebSocketConfig.kt:20`), unlike REST CORS which also accepts origin patterns. Vercel preview deploys cannot open WS.
 - `room_expiring` (10 min before TTL expiry) → toast + UI banner.
 - `message_expired` (batch hard delete from server) → remove from local store + toast.
 

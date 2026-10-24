@@ -234,15 +234,17 @@ wss://api.<domain>/ws?token=<access_token>      // prod
 | `message_expired` | `{roomId, messageIds}` | 해당 메시지 UI 제거 |
 | `error` | `{code, message}` | 에러별 처리 (아래 표) |
 
-### 에러 코드 (close 코드 1008과 함께 옴)
+### 에러 코드
+
+앞의 다섯 개(`NO_TOKEN`부터 `MAX_CONNECTIONS`까지)는 연결 직후 검사에서 나온다. 서버는 이 `error`를 보낸 직후 close code 1008로 연결을 끊는다 (server-v2 `ChatWebSocketHandler.kt:36-65`). 1008만 봐서는 원인을 알 수 없으니 직전 `error.code`로 나눈다. 처리 규칙 정본은 `.claude/RULES.md` R2다.
 
 | code | 의미 | 클라 처리 |
 |---|---|---|
-| `NO_TOKEN` | 토큰 없이 연결 | 로그인 redirect |
-| `TOKEN_EXPIRED` | JWT 만료 | refresh 후 재연결 |
-| `INVALID_TOKEN` | JWT 변조 | localStorage clear + 로그인 |
-| `RATE_LIMITED` | 재연결 너무 빠름 (2초) | 백오프 |
-| `MAX_CONNECTIONS` | 동시 4개 시도 | "다른 기기에서 접속 중" 안내 |
+| `NO_TOKEN` | 토큰 없이 연결 | refresh 1회 시도, 실패하면 로그인 redirect |
+| `TOKEN_EXPIRED` | JWT 만료 | 공용 single-flight refresh 후 재연결 |
+| `INVALID_TOKEN` | JWT 변조 | refresh 1회 시도, 실패하면 `clearSession()` + 로그인 |
+| `RATE_LIMITED` | 재연결 너무 빠름 (2초 미만) | refresh 없이 2초 이상 + jitter 대기 후 재연결 |
+| `MAX_CONNECTIONS` | 동시 4개 시도 (상한 3) | 재연결하지 않음. 다른 탭을 닫으라는 안내 + 수동 재시도 |
 | `NOT_AUTHENTICATED` | SecurityContext 없음 | 재연결 |
 | `INVALID_FORMAT` | JSON 파싱 실패 | 클라 버그 — 로그 |
 | `UNKNOWN_EVENT` | 미지의 type | 클라 버그 |
@@ -252,25 +254,35 @@ wss://api.<domain>/ws?token=<access_token>      // prod
 ### WebSocket 클라이언트 클래스 (권장 구조)
 
 ```typescript
-// src/lib/ws.ts
+// src/lib/ws/client.ts  (재연결 규칙 정본: .claude/RULES.md R2)
 type Handler = (data: any) => void
+
+const MIN_RECONNECT_MS = 2000 // 서버 MIN_CONNECTION_INTERVAL_MS (WebSocketSessionManager.kt:17)
+const MAX_RECONNECT_MS = 30000
 
 export class ChatWebSocketClient {
   private ws: WebSocket | null = null
+  // 리스너는 교체되지 않는 래퍼에 둔다. WebSocket 인스턴스는 재연결할 때마다 새로 생긴다
   private handlers = new Map<string, Set<Handler>>()
-  private reconnectMs = 1000
+  private reconnectMs = MIN_RECONNECT_MS
   private intentionalClose = false
+  private lastErrorCode: string | null = null
+  private authRetried = false
 
-  connect(token: string) {
-    const url = `${process.env.NEXT_PUBLIC_WS_URL}?token=${token}`
+  connect() {
+    // 토큰은 시도할 때마다 storage에서 읽는다. 갱신 전에 잡아 둔 값으로 붙지 않게 한다
+    const url = `${env.NEXT_PUBLIC_WS_URL}?token=${getAccessToken()}`
+    this.lastErrorCode = null
     this.ws = new WebSocket(url)
 
     this.ws.onopen = () => {
-      this.reconnectMs = 1000
+      this.reconnectMs = MIN_RECONNECT_MS
+      this.authRetried = false
     }
 
     this.ws.onmessage = (e) => {
       const { type, data } = JSON.parse(e.data)
+      if (type === 'error') this.lastErrorCode = data.code
       this.handlers.get(type)?.forEach((h) => h(data))
     }
 
@@ -278,15 +290,29 @@ export class ChatWebSocketClient {
       if (this.intentionalClose) return
 
       if (e.code === 1008) {
-        // POLICY_VIOLATION → token issue
-        this.refreshAndReconnect()
-        return
+        // 1008은 원인 다섯 개가 함께 쓴다. close 직전 error.code로 나눈다
+        switch (this.lastErrorCode) {
+          case 'MAX_CONNECTIONS':
+            notifyTooManyConnections() // 재연결하지 않는다
+            return
+          case 'RATE_LIMITED':
+            this.scheduleReconnect() // refresh 없이 2초 이상 기다린다
+            return
+          default: // TOKEN_EXPIRED, INVALID_TOKEN, NO_TOKEN, error 이벤트 없음
+            void this.refreshAndReconnect()
+            return
+        }
       }
 
-      // 일반 종료 → 백오프 재연결
-      setTimeout(() => this.connect(token), this.reconnectMs)
-      this.reconnectMs = Math.min(this.reconnectMs * 2, 30000)
+      // 그 외 종료 → 2초부터 시작하는 지수 백오프
+      this.scheduleReconnect()
     }
+  }
+
+  private scheduleReconnect() {
+    const delay = this.reconnectMs + Math.random() * 1000 // jitter
+    setTimeout(() => this.connect(), delay)
+    this.reconnectMs = Math.min(this.reconnectMs * 2, MAX_RECONNECT_MS)
   }
 
   on(type: string, handler: Handler): () => void {
@@ -324,7 +350,19 @@ export class ChatWebSocketClient {
   }
 
   private async refreshAndReconnect() {
-    // refresh 후 재연결 — 자세한 구현은 store와 통합
+    // 갱신한 뒤에도 같은 인증 실패가 나오면 로그아웃한다 (무한 반복 방지)
+    if (this.authRetried) {
+      useAuthStore.getState().clearSession()
+      return
+    }
+    this.authRetried = true
+    try {
+      await refreshOnce() // apiFetch와 같은 single-flight 갱신. 갱신 경로를 둘로 만들지 않는다
+    } catch {
+      useAuthStore.getState().clearSession()
+      return
+    }
+    this.scheduleReconnect() // 갱신 직후에도 서버의 2초 제한을 지킨다
   }
 }
 ```
@@ -335,9 +373,9 @@ export class ChatWebSocketClient {
 // src/store/ws.ts
 export const useWsStore = create<WsState>((set, get) => ({
   client: null,
-  connect: (token) => {
+  connect: () => {
     const c = new ChatWebSocketClient()
-    c.connect(token)
+    c.connect() // 토큰은 client가 storage에서 직접 읽는다
     set({ client: c })
   },
   disconnect: () => {
