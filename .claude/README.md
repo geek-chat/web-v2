@@ -15,11 +15,10 @@ This folder is the entry point for any AI coding agent (Claude Code, Cursor, Cod
 │   └── refresh-context/
 │       ├── SKILL.md      ← skill definition (frontmatter + body)
 │       └── update.sh     ← helper that does the actual file updates
-└── worktrees/
-    └── fervent-bell-35addf/   ← active worktree (this directory tree lives inside it)
+└── worktrees/            ← only in the main checkout: app-created git worktrees (names change when recycled)
 ```
 
-> Note: in the parent repo (`geek-chat-web-v2/.claude/`), only `worktrees/` exists. The `.claude/` you're reading right now is **inside the worktree** and gets merged to parent on PR. Don't double-define settings/skills in both — keep them in the worktree, merge to main once stabilized.
+> Note: `.claude/` is tracked in git, so the main checkout and every worktree carry the same files. Define settings, hooks, and skills here only, never in a second place.
 
 ## Stack quick reference
 

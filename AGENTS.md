@@ -39,13 +39,15 @@ When in doubt about an API, check `node_modules/next/dist/docs/` or run `npm ls 
 - REST: `~/Work/geek-chat/geek-chat-server-v2/docs/API.md`
 - WebSocket: `~/Work/geek-chat/geek-chat-server-v2/docs/WEBSOCKET.md`
 - Domain rules: `~/Work/geek-chat/geek-chat-server-v2/.claude/RULES.md`
-- Hexagonal architecture (server side): `domain/`, `application/`, `infrastructure/`, `adapter/`. Server tests: 105+ passing.
+- Server side is a multi-module Gradle build (e.g. `auth/`, `websocket/`, `app/`) with `presentation/`, `application/`, `domain/`, `infrastructure/` packages per module. When server docs and code disagree, **code wins**: server phases 3-8 landed after the last docs drift check.
+- Deployment: Render free tier (Docker) + Supabase Postgres, not deployed yet (server-v2 `docs/MIGRATION.md` Phase 8). The WS handshake Origin and the OAuth redirect target are both tied to a single `FRONTEND_URL`.
+- This repo never edits `geek-chat-server-v2/`, `geek-chat-web/`, or `geek-chat-server/`. Read them for contracts and report problems to the user.
 
 Frontend OAuth callbacks must match backend hash format exactly:
 - `/auth/success#access_token=...&refresh_token=...`
 - `/auth/oauth-link#link_token=...&existing_nickname=...&new_provider=...`
 - `/auth/oauth-complete#signup_token=...&suggested_nickname=...`
-- `/auth/error?error=oauth_failed` (query, NOT hash)
+- `/auth/error?error=<code>` (query, NOT hash), where code is `oauth_cancelled`, `missing_params`, `invalid_state`, or `oauth_failed` (`AuthController.kt:100-112`)
 
 ## Where to read first
 

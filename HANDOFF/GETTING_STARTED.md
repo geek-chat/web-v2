@@ -26,9 +26,9 @@
 
 **프로젝트**: GeekChat v2 — 실시간 메신저. 프라이버시 메신저 + 개발자 친화 포지셔닝.
 
-**백엔드**: Kotlin/Spring Boot. 위치 `~/Work/geek-chat/geek-chat-server-v2/`. 105 tests passing. **친구 클라우드(10.64.212.20) Docker Compose로 배포 예정**.
+**백엔드**: Kotlin/Spring Boot. 위치 `~/Work/geek-chat/geek-chat-server-v2/`. 배포 대상은 Render 무료(Docker) + Supabase Postgres로 바뀌었고 아직 배포 전이다 (server-v2 `docs/MIGRATION.md` Phase 8, 2026-07-10 결정). 예전 친구 클라우드 계획은 취소됐다.
 
-**현재 위치 (이 폴더)**: 프론트엔드 (Next.js). 비어 있음. 셋업부터 시작.
+**현재 위치 (이 폴더)**: 프론트엔드 (Next.js). Phase 1.1 인증까지 구현했고, 2026-10-24부터 백엔드 전환이 끝날 때까지 보류 중이다. 현재 상태는 `SESSION_PROGRESS.md`에 있다.
 
 **배포**: Vercel (auto-deploy on push to main).
 
@@ -90,10 +90,10 @@ echo ".env.local" >> .gitignore
 git add .
 git commit -m "chore: bootstrap Next.js 15 with TypeScript + Tailwind + App Router"
 
-# 6. 백엔드 dev 모드 띄우기 (별도 터미널)
+# 6. 백엔드 로컬 실행 (별도 터미널). 정본은 server-v2 README의 "Local Development"
 cd ~/Work/geek-chat/geek-chat-server-v2
-docker run -d -p 3306:3306 -e MYSQL_ROOT_PASSWORD=test -e MYSQL_DATABASE=geekchat mysql:8.0
-./gradlew bootRun --args='--spring.profiles.active=dev'
+docker compose -f docker-compose.dev.yml up -d
+./gradlew bootRun --args='--spring.profiles.active=local'
 
 # 7. 프론트 dev
 cd ~/Work/geek-chat/geek-chat-web-v2
@@ -158,7 +158,7 @@ OAuth 셋업 없이도 인증된 상태로 모든 기능 테스트 가능. 프�
 | OAuth callback에서 hash가 사라짐 | 페이지 mount 직후 즉시 파싱 + replaceState. SSR 컴포넌트로 만들면 안 됨 |
 | 401 시 무한 refresh 루프 | 단일-플라이트 큐 + 1회만 재시도 |
 | WS 재연결 폭주 | 2초부터 시작하는 지수 백오프 (cap 30초) + intentionalClose 플래그. 1008은 직전 `error.code`로 분기 (`.claude/RULES.md` R2) |
-| Vercel preview deploy CORS 차단 | 백엔드 `FRONTEND_ORIGIN_PATTERNS=https://*.vercel.app` 등록되어 있음 |
+| Vercel preview deploy CORS 차단 | REST는 `FRONTEND_ORIGIN_PATTERNS`(docker-compose 기본 `https://*.vercel.app`)로 허용된다. Render 설정은 확인 필요. WS는 `FRONTEND_URL` 하나만 허용해서 preview에서는 열리지 않는다 |
 | `crypto.randomUUID()` SSR 에러 | `'use client'` 컴포넌트 안에서만 호출 |
 | Hydration mismatch (다크모드) | `next-themes` 또는 mount 후 `setMounted(true)` 패턴 |
 
@@ -172,10 +172,11 @@ npm run dev                          # localhost:3000
 npm run build                        # production build 검증
 npm run lint
 
-# 백엔드 (별도 터미널)
+# 백엔드 (별도 터미널). 정본은 server-v2 README의 "Local Development"
 cd ~/Work/geek-chat/geek-chat-server-v2
-./gradlew bootRun --args='--spring.profiles.active=dev'
-./gradlew test                       # 105 tests
+docker compose -f docker-compose.dev.yml up -d
+./gradlew bootRun --args='--spring.profiles.active=local'   # dev-login은 dev, local 프로필에서만 열린다
+./gradlew test
 
 # 통합 테스트
 curl http://localhost:8080/health
@@ -196,4 +197,4 @@ curl 'http://localhost:8080/auth/dev-login?name=Alice'
 
 ## 9. 한 줄 요약
 
-> **백엔드는 다 돼있다 (105 tests). 프론트엔드는 인증 → 채팅 → 그룹/초대 순서로 만들면 끝.**
+> **(작성 당시 요약) 백엔드는 다 돼있다. 프론트엔드는 인증 → 채팅 → 그룹/초대 순서로 만들면 끝.** 지금 상태는 `SESSION_PROGRESS.md`에 있다.

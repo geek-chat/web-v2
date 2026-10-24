@@ -99,11 +99,11 @@ The server closes with `1008` (POLICY_VIOLATION) for five different causes (serv
 - `npx tsc --noEmit` passes.
 - `npm run lint` passes.
 - `npm run build` passes.
-- For chat features: 2-tab manual test with backend dev profile.
+- For chat features: 2-tab manual test against the backend `local` profile (server-v2 README "Local Development"; dev-login is enabled only in the `dev` and `local` profiles).
 
 ## R10. Never do
 
-- Don't modify `geek-chat-server/` or `geek-chat-web/` (v1, reference only).
+- Don't modify `geek-chat-server/`, `geek-chat-web/`, or `geek-chat-server-v2/` from this repo's sessions. Other sessions own them; read them for contracts and report problems to the user.
 - Don't commit secrets (JWT_SECRET, OAuth client secret, `.env.local`).
 - Don't import `domain/` from `infrastructure/` (server-side rule, but mentioned for context awareness).
 - Don't bypass `apiFetch` for "just one quick call" — it always rebites you.

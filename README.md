@@ -1,31 +1,36 @@
 # geek-chat-web-v2
 
-GeekChat v2 — Next.js 15 프론트엔드 (예정).
+GeekChat v2 웹 프론트엔드. Next.js 16 (App Router) + React 19 + Tailwind v4 + TypeScript.
 
-**현재 상태**: 비어있음. 셋업 전.
-**다음 세션**: 새 Claude 세션이 `HANDOFF/` 폴더 읽고 시작 가능.
+**현재 상태**: Phase 1.1 인증까지 구현했다 (가입, 로그인, OAuth 시작 버튼, single-flight 토큰 갱신). 2026-10-24부터 백엔드 전환이 끝날 때까지 기능 작업은 보류 중이다.
 
-## 시작점
+**시작점**: [`HANDOFF/SESSION_PROGRESS.md`](HANDOFF/SESSION_PROGRESS.md)
 
-→ **`HANDOFF/GETTING_STARTED.md`** 부터 읽으세요.
+## 개발
+
+```bash
+npm ci
+cp .env.example .env.local   # NEXT_PUBLIC_API_URL, NEXT_PUBLIC_WS_URL을 로컬 값으로 바꾼다
+npm run dev                  # http://localhost:3000
+```
+
+검증: `npx tsc --noEmit`, `npm run lint`, `npm run build`
 
 ## HANDOFF 문서 목록
 
 | 파일 | 내용 |
 |---|---|
-| `HANDOFF/GETTING_STARTED.md` | 5분 컨텍스트 + 첫 명령어 |
+| `HANDOFF/SESSION_PROGRESS.md` | 현재 상태와 다음 세션 진입 순서 (정본) |
+| `HANDOFF/GETTING_STARTED.md` | 5분 컨텍스트 (작성 당시 기준, 상단 안내 참고) |
 | `HANDOFF/AUTH_UX.md` | 인증 UX 정책 (와이어프레임 + 흐름) |
 | `HANDOFF/API_INTEGRATION.md` | REST + WebSocket 컨트랙트 + 코드 스니펫 |
 | `HANDOFF/ARCHITECTURE.md` | 폴더 구조 + 라이브러리 선택 + 데이터 흐름 |
 | `HANDOFF/COMPONENTS.md` | 핵심 컴포넌트 명세 + props |
 | `HANDOFF/DEVELOPMENT_PLAN.md` | Phase 1/2/3 작업 분할 |
+| `HANDOFF/MOBILE_STRATEGY.md` | 웹뷰, 네이티브, React Native 비교와 결정 트리 |
 
-## 백엔드 위치
+에이전트 규칙은 [`AGENTS.md`](AGENTS.md)와 [`.claude/RULES.md`](.claude/RULES.md)에 있다.
 
-`~/Work/geek-chat/geek-chat-server-v2/` (Kotlin/Spring Boot, 105 tests passing).
+## 백엔드
 
-백엔드 전체 컨텍스트: `~/Work/geek-chat/geek-chat-server-v2/CLAUDE.md`
-
-## 한 줄 요약
-
-> 백엔드는 다 돼있다. 프론트엔드는 인증 → 채팅 → 그룹/초대 순서로 만들면 끝.
+`~/Work/geek-chat/geek-chat-server-v2/` (Kotlin/Spring Boot). 배포 대상은 Render + Supabase Postgres이고 아직 배포 전이다. 이 저장소에서는 읽기만 한다.
