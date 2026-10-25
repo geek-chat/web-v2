@@ -7,9 +7,9 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { login, loginRequestSchema, type LoginRequest } from "@/lib/api/auth";
-import { ApiError } from "@/lib/api/client";
+import { describeApiError } from "@/lib/api/errorMessage";
 import { startSession } from "@/lib/auth/session";
-import { t, tError } from "@/i18n";
+import { t } from "@/i18n";
 
 export function LoginForm() {
   const router = useRouter();
@@ -32,13 +32,7 @@ export function LoginForm() {
       toast.success(t("auth.login.success"));
       router.replace("/rooms");
     } catch (err) {
-      if (err instanceof ApiError && err.body?.error) {
-        toast.error(tError(err.body.error));
-      } else if (err instanceof Error) {
-        toast.error(err.message || tError(undefined));
-      } else {
-        toast.error(tError(undefined));
-      }
+      toast.error(describeApiError(err, "login"));
     } finally {
       setSubmitting(false);
     }

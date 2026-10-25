@@ -12,9 +12,9 @@ import {
   signupRequestSchema,
   type SignupRequest,
 } from "@/lib/api/auth";
-import { ApiError } from "@/lib/api/client";
+import { describeApiError } from "@/lib/api/errorMessage";
 import { startSession } from "@/lib/auth/session";
-import { t, tError } from "@/i18n";
+import { t } from "@/i18n";
 
 // Form-only schema: empty email becomes undefined before submit.
 const formSchema = signupRequestSchema.extend({
@@ -48,13 +48,7 @@ export function SignupForm() {
       toast.success(t("auth.signup.success"));
       router.replace("/rooms");
     } catch (err) {
-      if (err instanceof ApiError && err.body?.error) {
-        toast.error(tError(err.body.error));
-      } else if (err instanceof Error) {
-        toast.error(err.message || tError(undefined));
-      } else {
-        toast.error(tError(undefined));
-      }
+      toast.error(describeApiError(err, "signup"));
     } finally {
       setSubmitting(false);
     }

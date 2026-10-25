@@ -10,7 +10,7 @@
  *     each function (request + response).
  *
  * Username regex matches backend exactly: ^[a-z0-9_]{3,20}$
- * Password length matches backend: 8..72.
+ * Password matches backend: 8..72 chars with at least one digit and one letter.
  * Nickname matches backend: 1..20 chars.
  */
 import { z } from "zod";
@@ -25,7 +25,10 @@ export const usernameSchema = z
 export const passwordSchema = z
   .string()
   .min(8, "비밀번호는 최소 8자")
-  .max(72, "비밀번호는 최대 72자");
+  .max(72, "비밀번호는 최대 72자")
+  // Server rule (AuthService.validatePassword): at least one digit and one letter.
+  .regex(/\d/, "숫자를 하나 이상 넣으세요")
+  .regex(/\p{L}/u, "문자를 하나 이상 넣으세요");
 export const nicknameSchema = z
   .string()
   .min(1, "닉네임을 입력하세요")

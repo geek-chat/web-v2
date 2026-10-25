@@ -4,7 +4,7 @@ import { useEffect } from "react";
 import { toast } from "sonner";
 import { useAuthStore } from "@/store/auth";
 import { verifySession } from "@/lib/auth/session";
-import { tError } from "@/i18n";
+import { t } from "@/i18n";
 
 /**
  * Mounts once at the root via layout.tsx. Performs:
@@ -22,7 +22,7 @@ export default function AppBoot() {
 
     function handleAuthLogout() {
       clearSession();
-      toast.info(tError("TokenExpired"));
+      toast.info(t("auth.error.TokenExpired"));
     }
     function handleOnline() {
       if (useAuthStore.getState().status === "offline") void verifySession();
