@@ -16,6 +16,7 @@
   --muted-foreground: #6b7280;
   --border: #e5e7eb;
   --primary: #4f46e5;
+  --primary-hover: #4338ca;
   --primary-foreground: #ffffff;
   --destructive: #dc2626;
 }
@@ -27,6 +28,7 @@
   --muted-foreground: #a1a1aa;
   --border: #27272a;
   --primary: #818cf8;
+  --primary-hover: #a5b4fc;
   --primary-foreground: #0a0a0a;
   --destructive: #f87171;
 }
@@ -38,6 +40,7 @@
   --color-muted-foreground: var(--muted-foreground);
   --color-border: var(--border);
   --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
   --color-primary-foreground: var(--primary-foreground);
   --color-destructive: var(--destructive);
   --font-sans: var(--font-geist-sans);
@@ -46,6 +49,18 @@
 
 html {
   color-scheme: dark;
+}
+
+/*
+ * Tailwind v4's preflight leaves buttons on the default arrow cursor (v3 gave
+ * them a pointer). Bring the pointer back for enabled controls you can click.
+ */
+@layer base {
+  button:not(:disabled),
+  [role="button"]:not(:disabled),
+  select:not(:disabled) {
+    cursor: pointer;
+  }
 }
 
 body {

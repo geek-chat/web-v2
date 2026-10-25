@@ -12,14 +12,16 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   fullWidth?: boolean;
 }
 
+// Hover only on enabled buttons, so a disabled one (an empty message box's
+// send button) does not light up as if it could be pressed.
 const variantClasses: Record<Variant, string> = {
   primary:
-    "bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-50",
+    "bg-primary text-primary-foreground enabled:hover:bg-primary-hover disabled:opacity-50",
   secondary:
-    "bg-muted text-foreground border border-border hover:bg-border/40 disabled:opacity-50",
-  ghost: "text-foreground hover:bg-muted disabled:opacity-50",
+    "bg-muted text-foreground border border-border enabled:hover:bg-border enabled:hover:border-muted-foreground/50 disabled:opacity-50",
+  ghost: "text-foreground enabled:hover:bg-border disabled:opacity-50",
   destructive:
-    "bg-destructive text-white hover:opacity-90 disabled:opacity-50",
+    "bg-destructive text-white enabled:hover:opacity-80 disabled:opacity-50",
 };
 
 const sizeClasses: Record<Size, string> = {
