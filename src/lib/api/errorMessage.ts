@@ -18,6 +18,7 @@ export type ErrorContext =
   | "oauthLink"
   | "oauthComplete"
   | "createRoom"
+  | "invite"
   | "generic";
 
 export function describeApiError(err: unknown, context: ErrorContext): string {
@@ -71,6 +72,13 @@ function byContext(status: number, message: string, context: ErrorContext): stri
           ? t("rooms.error.RoomFull")
           : t("auth.error.invalidInput");
       }
+      return null;
+    case "invite":
+      // Joining by code (InviteLinkService.joinByInviteCode); its only 400 is RoomFull.
+      if (status === 404) return t("invite.error.notFound");
+      if (status === 410) return t("invite.error.gone");
+      if (status === 409) return t("invite.error.alreadyMember");
+      if (status === 400) return t("rooms.error.RoomFull");
       return null;
     case "generic":
       return null;

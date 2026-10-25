@@ -38,6 +38,8 @@ interface RoomsState {
   removeRoom: (roomId: string) => void;
   /** Moves lastMessageAt forward for a new message, or flags the list stale for an unknown room. */
   touchRoom: (roomId: string, createdAt: string) => void;
+  /** Asks the list owner to refetch, e.g. after joining a room by invite. */
+  markStale: () => void;
   setCurrentRoom: (roomId: string | null) => void;
   /** Moves a member's read point forward only. */
   markRead: (roomId: string, userId: string, lastReadAt: string) => void;
@@ -103,6 +105,7 @@ export const useRoomsStore = create<RoomsState>((set) => ({
       };
     }),
 
+  markStale: () => set({ stale: true }),
   setCurrentRoom: (currentRoomId) => set({ currentRoomId }),
 
   markRead: (roomId, userId, lastReadAt) =>

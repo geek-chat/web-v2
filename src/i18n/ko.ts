@@ -105,6 +105,14 @@ export const ko = {
   "rooms.error.UserNotFound": "고른 사람을 찾을 수 없습니다",
   "rooms.error.RoomFull": "한 방에는 최대 100명까지 들어갈 수 있습니다",
   "room.back": "목록으로",
+  "invite.title": "초대 링크",
+  "invite.prompt": "초대받은 방에 참여할까요?",
+  "invite.join": "참여하기",
+  "invite.invalid": "올바른 초대 링크가 아닙니다",
+  "invite.toRooms": "대화 목록으로",
+  "invite.error.notFound": "초대 링크를 찾을 수 없습니다",
+  "invite.error.gone": "만료되었거나 사용 횟수를 다 쓴 초대 링크입니다",
+  "invite.error.alreadyMember": "이미 참여한 방입니다. 대화 목록에서 열어 주세요",
 
   // Chat screen (src/components/chat)
   "chat.input.label": "메시지",

@@ -50,3 +50,15 @@ describe("describeApiError for creating a room", () => {
     expect(describeApiError(err, "createRoom")).toBe(expected);
   });
 });
+
+describe("describeApiError for joining by invite", () => {
+  it.each<[string, ApiError, string]>([
+    ["no such link", apiError(404, "Invite link not found: AbC12dEf", "Not Found"), ko["invite.error.notFound"]],
+    ["expired", apiError(410, "Invite link has expired", "Gone"), ko["invite.error.gone"]],
+    ["used up", apiError(410, "Invite link has reached maximum uses", "Gone"), ko["invite.error.gone"]],
+    ["already in", apiError(409, "Already a member of this room", "Conflict"), ko["invite.error.alreadyMember"]],
+    ["room full", apiError(400, "Room is full (max 100)", "Bad Request"), ko["rooms.error.RoomFull"]],
+  ])("%s", (_name, err, expected) => {
+    expect(describeApiError(err, "invite")).toBe(expected);
+  });
+});

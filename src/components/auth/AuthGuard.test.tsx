@@ -87,3 +87,34 @@ describe("AuthGuard", () => {
     expect(screen.queryByText("secret")).toBeNull();
   });
 });
+
+describe("AuthGuard and an invite link opened while signed out", () => {
+  beforeEach(() => {
+    window.sessionStorage.clear();
+    window.history.replaceState(null, "", "/");
+  });
+
+  it("brings the user back to the invite after signing in", () => {
+    window.history.replaceState(null, "", "/invite/AbC12dEf");
+    setStatus("unauthenticated");
+    renderGuard();
+    expect(nav.replace).toHaveBeenCalledWith("/login");
+
+    // Every way of signing in ends on /rooms, inside the guard.
+    window.history.replaceState(null, "", "/rooms");
+    act(() => setStatus("authenticated"));
+
+    expect(nav.replace).toHaveBeenLastCalledWith("/invite/AbC12dEf");
+  });
+
+  it("remembers no other page", () => {
+    window.history.replaceState(null, "", "/me");
+    setStatus("unauthenticated");
+    renderGuard();
+
+    window.history.replaceState(null, "", "/rooms");
+    act(() => setStatus("authenticated"));
+
+    expect(nav.replace).toHaveBeenCalledTimes(1); // only the trip to /login
+  });
+});

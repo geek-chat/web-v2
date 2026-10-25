@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { AuthShell } from "@/components/auth/AuthShell";
 import { Button } from "@/components/ui/Button";
 import { Spinner } from "@/components/ui/Spinner";
+import { rememberReturnPath, takeReturnPath } from "@/lib/auth/returnPath";
 import { verifySession } from "@/lib/auth/session";
 import { useAuthStore } from "@/store/auth";
 import { t } from "@/i18n";
@@ -12,13 +13,23 @@ import { t } from "@/i18n";
  * Renders its children only for an authenticated session. Every status has
  * its own branch, checked for exhaustiveness at compile time: v1 got stuck on
  * an authed screen with no user after /auth/me failed.
+ *
+ * An invite link opened while signed out survives the trip through /login
+ * (src/lib/auth/returnPath.ts). The path comes from window.location rather
+ * than usePathname: sign-in lands on /rooms, and only the guard sees both ends.
  */
 export function AuthGuard({ children }: { children: ReactNode }) {
   const status = useAuthStore((s) => s.status);
   const router = useRouter();
 
   useEffect(() => {
-    if (status === "unauthenticated") router.replace("/login");
+    if (status === "unauthenticated") {
+      rememberReturnPath(window.location.pathname);
+      router.replace("/login");
+    } else if (status === "authenticated") {
+      const path = takeReturnPath();
+      if (path && path !== window.location.pathname) router.replace(path);
+    }
   }, [status, router]);
 
   switch (status) {
