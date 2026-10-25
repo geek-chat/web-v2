@@ -57,9 +57,10 @@ geek-chat-web-v2/
     │   └── (authed)/
     │       ├── layout.tsx               # AuthGuard + ChatConnection (Sidebar는 2.2)
     │       ├── rooms/
-    │       │   ├── page.tsx             # 방 목록
-    │       │   ├── new/page.tsx         # 새 방 만들기
-    │       │   └── [id]/page.tsx        # 채팅 화면
+    │       │   ├── layout.tsx           # 데스크톱: 사이드바(RoomsPanel) + 본문
+    │       │   ├── page.tsx             # 모바일: 방 목록, 데스크톱: "대화를 고르세요"
+    │       │   ├── new/page.tsx         # 새 대화 (CreateRoomForm)
+    │       │   └── [id]/page.tsx        # 채팅 화면 (2.3 전까지 임시)
     │       ├── me/page.tsx              # 프로필 + 로그아웃 + 탈퇴
     │       └── invite/[code]/page.tsx   # 초대 링크 join 처리
     ├── components/
@@ -80,10 +81,10 @@ geek-chat-web-v2/
     │   │   ├── ReadReceipt.tsx
     │   │   └── ExpiringRoomBanner.tsx
     │   ├── room/
-    │   │   ├── RoomList.tsx
-    │   │   ├── RoomListItem.tsx
-    │   │   ├── CreateRoomModal.tsx
-    │   │   └── InviteLinkModal.tsx
+    │   │   ├── RoomList.tsx             # RoomList + RoomsPanel(제목줄)
+    │   │   ├── RoomListItem.tsx         # roomTitle, formatActivity
+    │   │   ├── CreateRoomForm.tsx       # 검색, 선택, DIRECT 또는 GROUP 생성
+    │   │   └── InviteLinkModal.tsx      # (3.1)
     │   └── ui/
     │       ├── Button.tsx
     │       ├── Input.tsx
@@ -116,10 +117,8 @@ geek-chat-web-v2/
     │   ├── messages.ts                  # byRoom: 서버 시각 순 + 대기 행은 끝
     │   └── ws.ts                        # client, status, expiringRooms
     ├── hooks/
-    │   ├── useAuth.ts
-    │   ├── useRooms.ts
-    │   ├── useMessages.ts
-    │   └── useUserSearch.ts
+    │   ├── useRooms.ts                  # SWR(키에 사용자 id) → rooms 스토어, stale이면 다시 받음
+    │   └── useUserSearch.ts             # 300ms debounce, 키에 사용자 id
     ├── test/
     │   └── fakeWebSocket.ts             # 테스트용 WebSocket 대역
     └── i18n/

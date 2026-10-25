@@ -164,6 +164,12 @@ npm run dev
 
 ### Session 2.2 — 방 목록 + 1:1 채팅 화면
 
+**상태 (2026-10-25)**: 완료 (`9b613bb`). 계획과 달라진 점:
+- 방 만들기는 모달이 아니라 `/rooms/new` 페이지(`CreateRoomForm`)다. 사이드바는 `(authed)` 전체가 아니라 `(authed)/rooms/layout.tsx`에 두었다(`/me`에는 목록이 없음).
+- `useMessages`와 `useAuth`는 만들지 않았다. 첫 페이지는 2.1의 `loadRoomMessages()`가 맡고, 사용자는 `useAuthStore` 셀렉터로 읽는다.
+- `Avatar`는 이니셜만 그린다. 프로필 이미지는 OAuth 이미지 호스트를 next/image 설정에 넣을 때 붙인다.
+- `/rooms/[id]`는 2.3 전까지 쓸 임시 화면이다.
+
 **작업**:
 
 5. **API 클라이언트 확장** (30분)

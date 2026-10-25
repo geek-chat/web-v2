@@ -6,7 +6,7 @@
 
 ## Current state (one-liner)
 
-**Phase 2.1 완료 (2026-10-25)**: WebSocket 클라이언트, 채팅 스토어, 연결 수명 관리가 들어갔다. 다음은 Phase 2.2(방 목록, 1:1 채팅 화면)다. 사용자가 2026-10-25에 web-v2 재개를 지시해서(선택지 "지금 시작 + Vitest") 10-24부터의 보류를 풀었다. 백엔드 전환은 아직 진행 중이고 배포 URL이 없어서 로컬 백엔드 기준으로 개발한다.
+**Phase 2.2 완료 (2026-10-25)**: 방 목록, 새 대화 만들기, 임시 방 화면이 들어갔고 로컬 백엔드로 브라우저 확인까지 했다. 그 전에 Phase 2.1(WebSocket 클라이언트, 채팅 스토어)과 리뷰 반영, CSP nonce 수정, Vercel 전환을 마쳤다. 다음은 Phase 2.3(채팅 화면, 메시지 목록과 입력)이다. 사용자가 2026-10-25에 web-v2 재개를 지시해서(선택지 "지금 시작 + Vitest") 10-24부터의 보류를 풀었다. 백엔드 전환은 아직 진행 중이고 배포 URL이 없어서 로컬 백엔드 기준으로 개발한다.
 
 Phase 1 결과: 가입과 로그인, single-flight 토큰 갱신, OAuth 콜백 4페이지, AuthGuard, `/me`(유저네임 변경, 로그아웃, 탈퇴). Vitest 94개 테스트와 tsc, lint, build가 모두 통과한다. 독립 리뷰의 HIGH, MEDIUM, LOW-1은 고쳤다. 라우트는 `/`, `/login`, `/signup`, `/auth/{success,oauth-link,oauth-complete,error}`, `/rooms`(임시), `/me`다.
 
@@ -28,6 +28,45 @@ Phase 1 결과: 가입과 로그인, single-flight 토큰 갱신, OAuth 콜백 4
 | lucide-react | 1.14.0 |
 | vitest | 5.0.5 (jsdom 30.1.3, @testing-library/react 16.3.3, @vitejs/plugin-react 6.1.2) |
 | @types/node | 24.19.2 (vitest 5의 peer 요구, 로컬 런타임 Node 24.21에 맞춤) |
+
+---
+
+## 2026-10-25 Phase 2.2 결과
+
+### 커밋
+
+| 커밋 | 내용 |
+|---|---|
+| `7786c31` | 리뷰 M4: backfill 첫 커서를 5초 겹쳐 잡음 (사용자 승인으로 기존 테스트 기대값 수정) |
+| `9b613bb` | `searchUsers`, `createRoom`(서버 규칙대로 검증), `useRooms`, `useUserSearch`, `Avatar`, `RoomList`, `/rooms`(모바일 목록, 데스크톱 사이드바), `/rooms/new`, 임시 `/rooms/[id]` |
+
+### 설계 근거 (server-v2 `07372dd`)
+
+| 사실 | 근거 | 반영 |
+|---|---|---|
+| 상대 1명이고 이름이 없으면 DIRECT. 이미 있으면 그 방을 돌려준다 | `ChatRoomService.createRoom`, `findOrCreateDirectRoom` | `upsertRoom`이 병합해서 기존 DM의 `lastMessageAt`과 아바타를 지킨다 |
+| `ttlHours`는 서버가 값을 검사하지 않고 GROUP에만 적용한다. GROUP은 본인 포함 100명까지 (`RoomFull`, 400) | `createGroupRoom` | 화면은 24, 168, 720시간만 고르게 하고, zod로 1명 이상 99명 이하를 검사한다 |
+| 검색: 빈 검색어는 빈 목록, `@아이디`는 정확히 1명, 그 밖에는 닉네임 10명. 본인은 빠진다 | `UserService.searchUsers` | 결과가 계정마다 달라서 SWR 키에 사용자 id를 넣었다 |
+| 만들기 응답에는 `lastMessageAt`과 멤버 아바타가 없고 `_links`가 붙는다 | `CreateRoomResponse`, `RoomModelAssembler` | `toRoom()`으로 목록 행 모양을 만들고, zod가 `_links`를 버린다 |
+
+### 검증 (2026-10-25)
+
+`memguard -- npm test` (32개 파일, 208개 테스트), tsc, lint, build가 모두 exit 0이다.
+
+로컬 server-v2(`07372dd`, local 프로필)를 띄워 앱 브라우저로 확인했다.
+- Alice로 로그인했다(dev-login). 서버 로그에 `ws_connected ... totalConnections=1`이 찍혀 개발 모드 Strict Mode에서도 소켓이 하나였다.
+- `/rooms`는 빈 목록 화면, `/rooms/new`에서 "Bob"을 검색해 고르고 시작하자 `/rooms/<id>`로 이동했고 제목이 "Bob"이었다.
+- Bob이 WebSocket(Node 스크립트)으로 보낸 메시지가 새로고침 없이 사이드바의 방 시각("오후 6:13")으로 반영됐다.
+- 콘솔 오류는 0건이었다.
+
+### 로컬 백엔드 띄우는 법 (이번에 확인한 방식)
+
+server-v2 작업 트리는 다른 세션이 쓸 수 있어서 건드리지 않았다. `git -C ~/Work/geek-chat/geek-chat-server-v2 archive <커밋> | tar -x -C <scratchpad 폴더>`로 내보낸 뒤 그 폴더에서 실행한다. DB는 이미 떠 있는 `geekchat-dev-postgres`(5433)를 쓴다.
+
+1. `memguard -- ./gradlew :app:bootJar`로 jar를 한 번 빌드한다.
+2. `java -jar app/build/libs/app-0.0.1-SNAPSHOT.jar --spring.profiles.active=local`를 백그라운드로 띄운다.
+
+주의할 점이 있다. 훅이 서버 명령도 memguard로 감싸서, 서버가 떠 있는 동안에는 `npm test`, tsc, build가 잠금을 기다리며 멈춘다(`gradlew bootRun`으로 띄웠을 때 tsc가 3분 넘게 멈췄다). 브라우저 확인을 먼저 하고, 서버를 내린 뒤 검증 명령을 돌린다.
 
 ---
 
@@ -253,7 +292,7 @@ ea0f041 feat(env): add env validation + strict CSP headers + Turbopack root pin
 
 ## In-flight
 
-없음. Phase 2.1과 리뷰 반영(`df2f4f0`)까지 커밋했고, 문서를 커밋한 뒤 `main`에 반영해 push한다. push하면 Vercel `web` 프로젝트가 web-v2 운영 배포를 처음 만든다.
+없음. Phase 2.2(`9b613bb`)까지 커밋했고, 이 문서를 커밋한 뒤 `main`에 반영해 push한다. push하면 Vercel `web` 프로젝트가 자동으로 다시 배포한다.
 
 ---
 
@@ -336,14 +375,15 @@ PR #11(`fix/ws-contract-gaps`)은 `07372dd`로 머지됐고, 이 세션에서 �
 
 R2의 1008 분기는 바뀌지 않는다. PR #11에서도 close는 `reject`의 `POLICY_VIOLATION` 하나이고, 1008은 연결할 때만 온다.
 
-### 3. Phase 2.2: 방 목록과 1:1 채팅 화면
+### 3. Phase 2.3: 채팅 화면
 
-`HANDOFF/DEVELOPMENT_PLAN.md`의 Session 2.2를 따른다. 2.1에서 정해 둔 연결점:
-- 방 목록: SWR로 `listRooms()`를 부르고 결과를 `useRoomsStore.getState().setRooms()`에 넣는다. `stale`이 서면 다시 받는다 (서버에 방 추가 이벤트가 없다).
-- 방 화면: 마운트할 때 `setCurrentRoom(id)`, 첫 페이지는 `listMessages(id)` 결과를 `mergeServerMessages(id, rows)`로 넣는다. 위로 스크롤하면 `direction: "backward"`이고 커서는 가장 오래된 서버 행의 `createdAt` 문자열이다.
-- 보내기는 `sendChatMessage()`, 실패한 행의 재시도는 `retryChatMessage()`를 쓴다. React key는 `clientMessageId ?? id`.
-- 보낸 사람 이름: REST 행은 `senderNickname`, WS로 온 행은 방 멤버에서 찾는다.
-- `upsertRoom`은 방 생성과 함께 넣는다.
+`HANDOFF/DEVELOPMENT_PLAN.md`의 Session 2.3을 따른다. `/rooms/[id]`의 임시 화면을 바꾼다. 이미 정해 둔 연결점:
+- 첫 페이지는 `loadRoomMessages(id)`(`src/lib/chat/backfill.ts`)로 받는다. 방을 "로드됨"으로 표시하고, 소켓이 이미 수락된 뒤라면 backfill을 한 번 더 돈다. 직접 `listMessages`를 부르지 않는다.
+- 위로 스크롤하면 `direction: "backward"`이고, 커서는 가장 오래된 서버 행의 `createdAt` 문자열이다. backward 페이지는 내림차순으로 오지만 스토어가 정렬한다.
+- 보내기는 `sendChatMessage({roomId, senderId, content, ttlSeconds})`, 실패한 행의 재시도는 `retryChatMessage(clientMessageId)`를 쓴다. React key는 `clientMessageId ?? id`.
+- 보낸 사람 이름: REST 행은 `senderNickname`, WS로 온 행은 방 멤버(`useRoomsStore`)에서 찾는다.
+- 타이핑(`typing_start`, `typing_indicator`)과 읽음(`mark_read`, `read_update`)은 아직 스토어에 연결되지 않았다. `ChatWSClient.on()`으로 붙인다.
+- 두 사용자 확인은 한 브라우저로 할 수 없다(토큰이 탭끼리 공유되고 다른 탭 계정 전환을 감지함). 한쪽은 앱 브라우저, 다른 쪽은 Node 스크립트로 WebSocket에 붙는다(이번 세션의 `bob-send.mjs` 방식).
 
 ### 4. 세션 종료 직전
 
@@ -366,7 +406,7 @@ R2의 1008 분기는 바뀌지 않는다. PR #11에서도 close는 `reject`의 `
 | 리뷰 MEDIUM: 콜백 링크 출처 확인 | ✅ web-v2 쪽은 `d0a9116` (사용자가 "둘 다" 선택). 서버 쪽 보완은 사용자가 따로 처리 |
 | S8, S9 서버 보안 항목 | 사용자가 처리 담당을 정함. 운영 배포 전 처리 권장 |
 | 리뷰 LOW-2: Next canonical URL에 hash 잔류 | 남김. 위 "코드 리뷰" 절의 수정 후보를 dev에서 실측한 뒤 적용 |
-| Phase 2.1 실측 | 남음. 로컬 백엔드를 띄운 뒤 "다음 세션" 1번의 WS 확인을 한다 |
+| Phase 2.1 실측 | ✅ 2.2 확인 때 함께 했다 (WS 연결 1개, 다른 사용자의 `new_message` 수신). 재연결과 `MAX_CONNECTIONS` 토스트는 아직 브라우저로 보지 않았다 |
 | 다른 탭의 로그아웃과 계정 전환 | ✅ `df2f4f0`. 리뷰 HIGH로 올라와서 고쳤다. 다른 탭이 로그아웃하면 이 탭도 로그아웃되고, 다른 계정으로 로그인하면 이 탭도 그 계정으로 바뀐다 |
 | 리뷰 MEDIUM M4: 커서와 커밋 순서 | ✅ 첫 커서를 5초 겹쳐 잡음 (사용자 승인으로 기존 테스트 기대값 수정) |
 | Vercel 배포 | `web` 프로젝트가 `geek-chat/web-v2`를 배포한다 (2026-10-25 사용자 결정, ARCHITECTURE.md §5). env는 자리표시 값이라 로그인과 채팅은 백엔드 배포 뒤에 동작한다 |
@@ -419,4 +459,4 @@ R2의 1008 분기는 바뀌지 않는다. PR #11에서도 close는 `reject`의 `
 
 ## 한 줄 요약
 
-> **web-v2는 Phase 1(인증)과 Phase 2.1(WS 클라이언트, 스토어)을 마쳤고 다음은 Phase 2.2(방 목록, 채팅 화면)다. 환경 복구 → 기준선 확인 → (백엔드가 있으면) WS 실측 → Phase 2.2 순서로 진행한다. 끝날 때 refresh-context 스킬 호출 필수.**
+> **web-v2는 Phase 1(인증), 2.1(WS 클라이언트, 스토어), 2.2(방 목록, 새 대화)를 마쳤고 다음은 Phase 2.3(채팅 화면)이다. 운영은 Vercel `web` 프로젝트(자리표시 env)에 올라가 있다. 환경 복구 → 기준선 확인 → 로컬 백엔드(위 "로컬 백엔드 띄우는 법") → Phase 2.3 순서로 진행한다. 끝날 때 refresh-context 스킬 호출 필수.**
