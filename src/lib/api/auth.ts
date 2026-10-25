@@ -196,6 +196,11 @@ export const devLoginResponseSchema = z.object({
 });
 
 export async function devLogin(name: string): Promise<TokenPair> {
+  // The backend serves /auth/dev-login only in its dev and local profiles
+  // (DevAuthController @Profile); a production build must never call it.
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("devLogin is only available in development");
+  }
   const res = await apiFetch<unknown>(
     `/auth/dev-login?name=${encodeURIComponent(name)}`,
     { method: "GET", auth: false },

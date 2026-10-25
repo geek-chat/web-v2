@@ -13,8 +13,9 @@
  * `nickname` fields are URL-encoded server-side via URLEncoder.encode(s, UTF-8).
  * URLSearchParams handles the decode.
  *
- * Hash MUST be cleared from the URL on mount via clearHash() to prevent
- * referer leakage of tokens to third-party scripts.
+ * Pages read the fragment through useOAuthHash() (./useOAuthHash.ts), which
+ * captures it once and clears it from the URL so tokens don't linger in the
+ * address bar or history.
  */
 
 export type OAuthHash = Record<string, string>;

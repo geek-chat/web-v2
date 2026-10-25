@@ -1,5 +1,20 @@
-import { describe, expect, it } from "vitest";
-import { passwordSchema } from "./auth";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { devLogin, passwordSchema } from "./auth";
+
+describe("devLogin", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("refuses to run in a production build", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(devLogin("alice")).rejects.toThrow("only available in development");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
 
 // Mirrors geek-chat-server-v2 AuthService.validatePassword: 8+ chars, a digit, a letter.
 describe("passwordSchema", () => {
