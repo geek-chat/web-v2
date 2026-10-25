@@ -17,6 +17,7 @@ export type ErrorContext =
   | "username"
   | "oauthLink"
   | "oauthComplete"
+  | "createRoom"
   | "generic";
 
 export function describeApiError(err: unknown, context: ErrorContext): string {
@@ -62,6 +63,14 @@ function byContext(status: number, message: string, context: ErrorContext): stri
     case "oauthComplete":
       if (status === 401) return t("auth.error.oauthTokenExpired");
       if (status === 400) return t("auth.error.invalidInput");
+      return null;
+    case "createRoom":
+      if (status === 404) return t("rooms.error.UserNotFound");
+      if (status === 400) {
+        return message.startsWith("Room is full")
+          ? t("rooms.error.RoomFull")
+          : t("auth.error.invalidInput");
+      }
       return null;
     case "generic":
       return null;

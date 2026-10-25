@@ -52,3 +52,48 @@ describe("rooms store", () => {
     expect(store().currentRoomId).toBe("r1");
   });
 });
+
+describe("rooms store: merging a created room and a refetched list", () => {
+  beforeEach(() => {
+    store().reset();
+  });
+
+  const dm = (lastMessageAt: string | null, avatar: string | null): Room => ({
+    id: "r1",
+    type: "DIRECT",
+    name: null,
+    lastMessageAt,
+    expiresAt: null,
+    members: [
+      { userId: "u1", nickname: "Alice", profileImageUrl: null },
+      { userId: "u2", nickname: "Bob", profileImageUrl: avatar },
+    ],
+  });
+
+  it("keeps the activity and avatars of a DM that already existed", () => {
+    store().setRooms([dm("2026-10-25T05:00:00Z", "https://img/bob.png"), room("r2", null)]);
+
+    store().upsertRoom(dm(null, null)); // what createRoom returns for an existing DM
+
+    expect(store().rooms?.[0]).toEqual(dm("2026-10-25T05:00:00Z", "https://img/bob.png"));
+    expect(store().rooms).toHaveLength(2);
+  });
+
+  it("puts a new room first, and waits for the first load otherwise", () => {
+    store().upsertRoom(room("r9", null));
+    expect(store().rooms).toBeNull();
+
+    store().setRooms([room("r1", "2026-10-25T05:00:00Z")]);
+    store().upsertRoom(room("r9", null));
+    expect(store().rooms?.map((r) => r.id)).toEqual(["r9", "r1"]);
+  });
+
+  it("keeps a lastMessageAt that a live message moved past the refetched list", () => {
+    store().setRooms([room("r1", "2026-10-25T05:00:00Z")]);
+    store().touchRoom("r1", "2026-10-25T05:00:09Z"); // new_message during the refetch
+
+    store().setRooms([room("r1", "2026-10-25T05:00:05Z")]);
+
+    expect(store().rooms?.[0].lastMessageAt).toBe("2026-10-25T05:00:09Z");
+  });
+});

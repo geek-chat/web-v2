@@ -99,3 +99,55 @@ describe("rooms REST module", () => {
     await expect(listMessages("room-1")).rejects.toThrow();
   });
 });
+
+describe("createRoom", () => {
+  beforeEach(() => {
+    setTokens({ accessToken: makeJwt(Math.floor(Date.now() / 1000) + 3600), refreshToken: "r" });
+  });
+
+  // CreateRoomResponse with the HATEOAS links the assembler adds.
+  const created = {
+    id: "room-9",
+    type: "DIRECT",
+    name: null,
+    expiresAt: null,
+    members: [
+      { userId: "u1", nickname: "Alice" },
+      { userId: "u2", nickname: "Bob" },
+    ],
+    _links: { self: { href: "http://localhost:8080/api/rooms/room-9" } },
+  };
+
+  it("posts only the fields given and drops the links from the response", async () => {
+    const fetchMock = installFetch(created);
+    const { createRoom, toRoom } = await import("./rooms");
+
+    const room = await createRoom({ memberIds: ["u2"] });
+
+    const [, init] = fetchMock.mock.calls[0];
+    expect(init?.method).toBe("POST");
+    expect(JSON.parse(String(init?.body))).toEqual({ memberIds: ["u2"] });
+    expect(room).not.toHaveProperty("_links");
+    expect(toRoom(room)).toEqual({
+      id: "room-9",
+      type: "DIRECT",
+      name: null,
+      expiresAt: null,
+      lastMessageAt: null,
+      members: [
+        { userId: "u1", nickname: "Alice", profileImageUrl: null },
+        { userId: "u2", nickname: "Bob", profileImageUrl: null },
+      ],
+    });
+  });
+
+  it("refuses a lifetime the UI does not offer, before any request", async () => {
+    const fetchMock = installFetch(created);
+    const { createRoom } = await import("./rooms");
+
+    await expect(
+      createRoom({ memberIds: ["u2", "u3"], ttlHours: 5 as unknown as 24 }),
+    ).rejects.toThrow();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});

@@ -44,3 +44,21 @@ describe("updateUsername", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });
+
+describe("searchUsers", () => {
+  it("encodes the query and parses the results", async () => {
+    setTokens({ accessToken: makeJwt(Math.floor(Date.now() / 1000) + 3600), refreshToken: "r" });
+    const found = { id: "u2", nickname: "밥", username: null, profileImageUrl: null };
+    const fetchMock = vi.fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>(
+      async () => jsonResponse(200, [found]),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const { searchUsers } = await import("./users");
+
+    await expect(searchUsers("@bob 밥")).resolves.toEqual([found]);
+
+    const url = new URL(String(fetchMock.mock.calls[0][0]));
+    expect(url.pathname).toBe("/api/users/search");
+    expect(url.searchParams.get("q")).toBe("@bob 밥");
+  });
+});

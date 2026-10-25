@@ -46,6 +46,48 @@ export async function listRooms(): Promise<Room[]> {
   return z.array(roomSchema).parse(res);
 }
 
+/** Room lifetimes the UI offers, in hours (API.md). The server applies ttlHours to GROUP rooms only. */
+export const ROOM_TTL_HOURS = [24, 168, 720] as const;
+/** ChatRoom.MAX_GROUP_MEMBERS, the creator included. */
+export const MAX_GROUP_MEMBERS = 100;
+
+export const createRoomRequestSchema = z.object({
+  memberIds: z.array(z.string().min(1)).min(1).max(MAX_GROUP_MEMBERS - 1),
+  name: z.string().trim().min(1).optional(),
+  ttlHours: z.union([z.literal(24), z.literal(168), z.literal(720)]).optional(),
+});
+export type CreateRoomRequest = z.infer<typeof createRoomRequestSchema>;
+
+/** CreateRoomResponse: no lastMessageAt and no member avatars, unlike a list row. */
+export const createdRoomSchema = z.object({
+  id: z.string(),
+  type: roomTypeSchema,
+  name: z.string().nullable(),
+  expiresAt: z.string().nullable(),
+  members: z.array(z.object({ userId: z.string(), nickname: z.string() })),
+});
+export type CreatedRoom = z.infer<typeof createdRoomSchema>;
+
+/** A create response shaped as a list row; the missing fields are empty, for the store to fill from what it holds. */
+export function toRoom(created: CreatedRoom): Room {
+  return {
+    ...created,
+    lastMessageAt: null,
+    members: created.members.map((member) => ({ ...member, profileImageUrl: null })),
+  };
+}
+
+/**
+ * POST /api/rooms (ChatRoomService.createRoom). One member and no name opens a
+ * DIRECT room, or returns the one that already exists; anything else creates a
+ * GROUP room (named "Group" when the name is left out).
+ */
+export async function createRoom(req: CreateRoomRequest): Promise<CreatedRoom> {
+  const body = createRoomRequestSchema.parse(req);
+  const res = await apiFetch<unknown>("/api/rooms", { method: "POST", body });
+  return createdRoomSchema.parse(res);
+}
+
 /** The server clamps `limit` into 1..100 (MessageService.getMessages). */
 export const MESSAGE_PAGE_MAX = 100;
 

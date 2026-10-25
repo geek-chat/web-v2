@@ -40,3 +40,13 @@ describe("describeApiError", () => {
     expect(describeApiError(err, "signup")).toBe(ko["auth.error.invalidInput"]);
   });
 });
+
+describe("describeApiError for creating a room", () => {
+  it.each<[string, ApiError, string]>([
+    ["a picked user is gone", apiError(404, "User not found: u9", "Not Found"), ko["rooms.error.UserNotFound"]],
+    ["too many members", apiError(400, "Room is full (max 100)", "Bad Request"), ko["rooms.error.RoomFull"]],
+    ["other bad input", apiError(400, "memberIds is required", "Bad Request"), ko["auth.error.invalidInput"]],
+  ])("%s", (_name, err, expected) => {
+    expect(describeApiError(err, "createRoom")).toBe(expected);
+  });
+});

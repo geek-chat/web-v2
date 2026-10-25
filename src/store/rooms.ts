@@ -18,8 +18,17 @@ interface RoomsState {
   currentRoomId: string | null;
   stale: boolean;
 
-  /** Stores a freshly fetched list and clears `stale`. */
+  /**
+   * Stores a freshly fetched list and clears `stale`. A lastMessageAt that a
+   * new_message moved past the fetched value while it loaded is kept.
+   */
   setRooms: (rooms: Room[]) => void;
+  /**
+   * Adds a room, or merges it into the one held. Fields the incoming copy lacks
+   * (a create response has no lastMessageAt and no avatars) keep their held
+   * values: creating a DM that already exists returns the existing room.
+   */
+  upsertRoom: (room: Room) => void;
   removeRoom: (roomId: string) => void;
   /** Moves lastMessageAt forward for a new message, or flags the list stale for an unknown room. */
   touchRoom: (roomId: string, createdAt: string) => void;
@@ -27,12 +36,45 @@ interface RoomsState {
   reset: () => void;
 }
 
+/** The later of two optional instants. */
+function later(a: string | null, b: string | null): string | null {
+  if (!a || !b) return a ?? b;
+  return toEpochMs(a) >= toEpochMs(b) ? a : b;
+}
+
 export const useRoomsStore = create<RoomsState>((set) => ({
   rooms: null,
   currentRoomId: null,
   stale: false,
 
-  setRooms: (rooms) => set({ rooms, stale: false }),
+  setRooms: (rooms) =>
+    set((state) => ({
+      rooms: rooms.map((room) => {
+        const held = state.rooms?.find((r) => r.id === room.id);
+        return held ? { ...room, lastMessageAt: later(room.lastMessageAt, held.lastMessageAt) } : room;
+      }),
+      stale: false,
+    })),
+
+  upsertRoom: (room) =>
+    set((state) => {
+      if (!state.rooms) return state; // the first load will bring it
+      const held = state.rooms.find((r) => r.id === room.id);
+      if (!held) return { rooms: [room, ...state.rooms] };
+      const merged: Room = {
+        ...held,
+        ...room,
+        lastMessageAt: later(room.lastMessageAt, held.lastMessageAt),
+        members: room.members.map((member) => ({
+          ...member,
+          profileImageUrl:
+            member.profileImageUrl ??
+            held.members.find((m) => m.userId === member.userId)?.profileImageUrl ??
+            null,
+        })),
+      };
+      return { rooms: state.rooms.map((r) => (r === held ? merged : r)) };
+    }),
 
   removeRoom: (roomId) =>
     set((state) => (state.rooms ? { rooms: state.rooms.filter((r) => r.id !== roomId) } : state)),
