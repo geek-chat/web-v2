@@ -21,10 +21,12 @@ If your training is on v15/v3/v8, read `node_modules/next/dist/docs/` or run `np
 - Tokens live in **localStorage**. Keys: `access_token`, `refresh_token`.
 - All HTTP must go through `src/lib/api/client.ts` `apiFetch()`. Direct `fetch()` is forbidden (breaks 401 handling).
 - 401 from any endpoint triggers **single-flight refresh**: only one refresh in flight, all pending requests await the same Promise. On refresh failure → `clearTokens()` + redirect to `/login`.
-- OAuth fragment parsing **must be client-side only**: `'use client'` + `useEffect`. Call `clearHash()` (`history.replaceState`) immediately on mount so tokens don't stay in the address bar or browser history. (Fragments are never sent in the `Referer` header; history and third-party scripts reading `location` are the real exposure.)
+- OAuth fragments are read **only through `useOAuthHash()`** (`src/lib/auth/useOAuthHash.ts`). It captures the fragment once on the first client render and clears it with `history.replaceState`, so tokens don't stay in the address bar or browser history. (Fragments are never sent in the `Referer` header; history and third-party scripts reading `location` are the real exposure.) Don't parse in an effect and `setState`: `react-hooks/set-state-in-effect` is an error here.
+- A callback fragment counts only when this tab started the OAuth flow: `OAuthButtons` calls `startOAuthFlow()` (`src/lib/auth/oauthFlow.ts`, a 10-minute mark in sessionStorage) before leaving for the provider, and `useOAuthHash` ignores fragments without a pending mark, then uses the mark up. Any new entry point into OAuth must go through `startOAuthFlow()`.
 - Each OAuth callback page reads **only its own path's keys**: `/auth/success` → `access_token`, `refresh_token`; `/auth/oauth-link` → `link_token`, `existing_nickname`, `new_provider`; `/auth/oauth-complete` → `signup_token`, `suggested_nickname`. `link_token` and `signup_token` are one-time credentials and are **never** written to token storage. (v1 reused the `access_token` key for the link token; v2 separates paths and keys, keep it that way.)
 - Token storage (`src/lib/auth/storage.ts`) is the only token source. The Zustand store holds `status` and `user`, never tokens. Every terminal auth failure goes through `clearSession()`, directly or via the `auth:logout` event, so storage and store never disagree.
-- `/auth/me` failures are never swallowed. Auth expiry → `clearSession()`. A network or 5xx failure (e.g. a Render free-tier cold start) must not leave "logged-out UI with tokens still stored". This is an open item, see the carry-over table in `HANDOFF/SESSION_PROGRESS.md`.
+- Session state comes from `src/lib/auth/session.ts`: `startSession(tokens)` after login, signup or an OAuth callback; `verifySession()` on boot, on retry and on the browser `online` event. Only 401 (after the refresh), 403 and 404 end the session. Any other `/auth/me` failure (network, 5xx, a Render free-tier cold start) keeps the tokens and sets `offline`, which AuthGuard shows as a retry screen.
+- User-facing API error text comes from `describeApiError(err, context)` (`src/lib/api/errorMessage.ts`). The server's `error` field is the HTTP reason phrase ("Conflict"), not a domain code, so never look it up directly.
 - `clientMessageId` for `send_message` events: `crypto.randomUUID()` wrapped with `typeof window` guard for SSR safety.
 
 ## R2. WebSocket
@@ -101,9 +103,11 @@ The server closes with `1008` (POLICY_VIOLATION) for five different causes (serv
 
 ## R9. Build + verify
 
+- `npm test` passes (Vitest, `vitest.config.mts`). New features add at least one test.
 - `npx tsc --noEmit` passes.
 - `npm run lint` passes.
 - `npm run build` passes.
+- Run the four one at a time through `memguard -- <command>`.
 - For chat features: 2-tab manual test against the backend `local` profile (steps in the header of server-v2 `docker-compose.dev.yml`; its README describes the local DB as MySQL, which is stale, see S4; dev-login is enabled only in the `dev` and `local` profiles).
 
 ## R10. Never do

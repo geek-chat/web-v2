@@ -2,7 +2,7 @@
 
 GeekChat v2 웹 프론트엔드. Next.js 16 (App Router) + React 19 + Tailwind v4 + TypeScript.
 
-**현재 상태**: Phase 1.1 인증까지 구현했다 (가입, 로그인, OAuth 시작 버튼, single-flight 토큰 갱신). 2026-10-24부터 백엔드 전환이 끝날 때까지 기능 작업은 보류 중이다.
+**현재 상태**: Phase 1 인증을 구현했다 (가입, 로그인, single-flight 토큰 갱신, OAuth 콜백 4종, AuthGuard, `/me`의 유저네임 변경과 로그아웃, 탈퇴). 다음은 Phase 2 채팅이다. 백엔드는 아직 배포 전이라 로컬 백엔드로 개발한다.
 
 **시작점**: [`HANDOFF/SESSION_PROGRESS.md`](HANDOFF/SESSION_PROGRESS.md)
 
@@ -14,7 +14,7 @@ cp .env.example .env.local   # NEXT_PUBLIC_API_URL, NEXT_PUBLIC_WS_URL을 로컬
 npm run dev                  # http://localhost:3000
 ```
 
-검증: `npx tsc --noEmit`, `npm run lint`, `npm run build`
+검증: `npm test` (Vitest), `npx tsc --noEmit`, `npm run lint`, `npm run build`
 
 ## HANDOFF 문서 목록
 

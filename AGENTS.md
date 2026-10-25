@@ -17,13 +17,14 @@ This version has breaking changes — APIs, conventions, and file structure may 
 | Tailwind | **v4** | **No `tailwind.config.ts`** — config is CSS-based via `@theme` in `globals.css`. |
 | TypeScript | 5.x | Strict mode. `@/*` → `./src/*`. |
 | ESLint | v9 | Flat config (`eslint.config.mjs`). |
-| Node types | `@types/node@20` |  |
+| Node types | `@types/node@24` | Matches the Node 24 runtime; vitest 5 requires `^22 || >=24`. |
+| Tests | Vitest 5 + jsdom + React Testing Library | `npm test` runs once (`vitest run`); config in `vitest.config.mts`. |
 
 When in doubt about an API, check `node_modules/next/dist/docs/` or run `npm ls next react tailwindcss`.
 
 ## Project rules (binding)
 
-1. **OAuth fragment parsing — client-side only.** `'use client'` + `useEffect` on mount. Call `clearHash()` (history.replaceState) immediately to prevent referer leaks.
+1. **OAuth fragments go through `useOAuthHash()` only.** It reads the fragment once on the client, and only when this tab started the flow with `startOAuthFlow()` (`src/lib/auth/oauthFlow.ts`), then clears it from the URL (history.replaceState). One-time `link_token` and `signup_token` stay in component state, never in storage.
 2. **WebSocket = global singleton.** Stored in Zustand (`src/store/ws.ts`). Backend caps at 3 connections per user. Never instantiate per-component.
 3. **fetch() must go through `src/lib/api/client.ts`.** Direct `fetch()` calls bypass the single-flight refresh and break 401 handling.
 4. **`clientMessageId` = `crypto.randomUUID()`** (client only — wrap in `typeof window !== 'undefined'` for SSR safety). Used as backend idempotency key.
@@ -63,4 +64,6 @@ Frontend OAuth callbacks must match backend hash format exactly:
 
 - Before completing a session: run the **refresh-context** skill (auto-triggered by Stop hook). It updates HANDOFF/, regenerates progress markers, and prepares the next session for context-fresh resumption.
 - Test policy: existing tests are spec — fix production code, not tests. New features require ≥1 test.
+- Verification: `npm test`, `npx tsc --noEmit`, `npm run lint`, `npm run build`, one at a time through `memguard -- <command>`.
+- Push-time quick check for agent hooks: <!-- repo-verify: npx tsc --noEmit -->
 - Commit policy: atomic per logical unit. Use HEREDOC for messages. Never amend (always new commit on hook failure).
