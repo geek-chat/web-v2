@@ -46,7 +46,7 @@ describe("backfill", () => {
     expect(list).not.toHaveBeenCalled();
   });
 
-  it("pages forward from the exact newest server createdAt until a short page", async () => {
+  it("pages forward from 5s before the newest server createdAt until a short page", async () => {
     store().mergeServerMessages("r1", [dto("m1", 1)]);
     store().addPending({ roomId: "r1", clientMessageId: "c1", senderId: "u1", content: "hi" });
     const page1 = fullPage("a", 1);
@@ -56,7 +56,7 @@ describe("backfill", () => {
 
     expect(list).toHaveBeenNthCalledWith(1, "r1", {
       direction: "forward",
-      cursor: "2026-10-25T05:00:01.123456Z",
+      cursor: "2026-10-25T04:59:56.123Z", // the newest server row minus the 5s overlap
       limit: MESSAGE_PAGE_MAX,
     });
     expect(list).toHaveBeenNthCalledWith(2, "r1", {
@@ -144,7 +144,7 @@ describe("backfill: which rooms count as loaded", () => {
     expect(list).toHaveBeenNthCalledWith(1, "r1", { limit: MESSAGE_PAGE_MAX });
     expect(list).toHaveBeenNthCalledWith(2, "r1", {
       direction: "forward",
-      cursor: "2026-10-25T05:00:02.123456Z",
+      cursor: "2026-10-25T04:59:57.123Z", // the newest server row minus the 5s overlap
       limit: MESSAGE_PAGE_MAX,
     });
     expect(ids("r1")).toEqual(["m1", "m2", "m3"]);
@@ -170,5 +170,24 @@ describe("backfill: which rooms count as loaded", () => {
     await loadRoomMessages("r1");
 
     expect(store().byRoom).toEqual({});
+  });
+});
+
+describe("backfill: messages that commit out of createdAt order", () => {
+  beforeEach(() => {
+    list.mockReset();
+    store().reset();
+  });
+
+  it("recovers an older message that committed after the newest one held", async () => {
+    // B (05:00:02) arrived live; A (05:00:01) committed later, after the socket dropped.
+    store().mergeServerMessages("r1", [dto("B", 2)]);
+    list.mockImplementationOnce(async (_roomId, query) =>
+      query?.cursor && query.cursor < dto("A", 1).createdAt ? [dto("A", 1), dto("B", 2)] : [],
+    );
+
+    await backfillRoom("r1");
+
+    expect(ids("r1")).toEqual(["A", "B"]);
   });
 });
