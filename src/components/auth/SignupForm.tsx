@@ -13,7 +13,7 @@ import {
   type SignupRequest,
 } from "@/lib/api/auth";
 import { ApiError } from "@/lib/api/client";
-import { useAuthStore } from "@/store/auth";
+import { startSession } from "@/lib/auth/session";
 import { t, tError } from "@/i18n";
 
 // Form-only schema: empty email becomes undefined before submit.
@@ -28,7 +28,6 @@ type FormValues = z.input<typeof formSchema>;
 
 export function SignupForm() {
   const router = useRouter();
-  const setSession = useAuthStore((s) => s.setSession);
   const [submitting, setSubmitting] = useState(false);
 
   const {
@@ -45,7 +44,7 @@ export function SignupForm() {
     try {
       const req: SignupRequest = signupRequestSchema.parse(values);
       const tokens = await signup(req);
-      setSession(tokens);
+      await startSession(tokens);
       toast.success(t("auth.signup.success"));
       router.replace("/rooms");
     } catch (err) {

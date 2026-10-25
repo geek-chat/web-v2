@@ -8,12 +8,11 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { login, loginRequestSchema, type LoginRequest } from "@/lib/api/auth";
 import { ApiError } from "@/lib/api/client";
-import { useAuthStore } from "@/store/auth";
+import { startSession } from "@/lib/auth/session";
 import { t, tError } from "@/i18n";
 
 export function LoginForm() {
   const router = useRouter();
-  const setSession = useAuthStore((s) => s.setSession);
   const [submitting, setSubmitting] = useState(false);
 
   const {
@@ -29,7 +28,7 @@ export function LoginForm() {
     setSubmitting(true);
     try {
       const tokens = await login(values);
-      setSession(tokens);
+      await startSession(tokens);
       toast.success(t("auth.login.success"));
       router.replace("/rooms");
     } catch (err) {
