@@ -98,6 +98,15 @@ export const ko = {
   "me.withdraw.submit": "탈퇴하기",
   "me.withdraw.success": "탈퇴했습니다",
 
+  // Chat connection notices (src/components/chat/ChatConnection.tsx)
+  "chat.room.unnamed": "이름 없는 방",
+  "chat.room.expiring": "'{name}' 방이 {time}에 만료됩니다",
+  "chat.room.expiringSoon": "'{name}' 방이 곧 만료됩니다",
+  "chat.room.expired": "'{name}' 방이 만료되어 목록으로 돌아왔습니다",
+  "chat.message.expired": "자동 삭제 메시지 {count}개가 사라졌습니다",
+  "chat.message.sendFailed": "메시지를 보내지 못했습니다",
+  "chat.ws.tooManyConnections": "다른 탭에서 채팅이 열려 있어 연결하지 못했습니다. 탭 하나를 닫고 다시 시도하세요",
+
   // Auth — errors. Chosen by HTTP status + call context in src/lib/api/errorMessage.ts,
   // because the server's `error` field is the reason phrase, not the domain code.
   "auth.error.UsernameAlreadyTaken": "이미 사용 중인 사용자명입니다",
