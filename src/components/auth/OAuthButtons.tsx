@@ -37,10 +37,7 @@ export function OAuthButtons({ disabled = false }: { disabled?: boolean }) {
         size="md"
         onClick={() => start("naver")}
         disabled={disabled}
-        // `!` because the secondary variant sets the same properties, and
-        // Tailwind orders same-property utilities by name, not by class order:
-        // without it the button rendered in the variant's gray.
-        className="bg-[#03c75a]! text-white! border-transparent! enabled:hover:bg-[#02a94c]!"
+        className="border-transparent bg-[#03c75a] text-white enabled:hover:border-transparent enabled:hover:bg-[#02a94c]"
       >
         <span aria-hidden className="font-black text-base">N</span>
         {t("auth.oauth.naver")}

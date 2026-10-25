@@ -1,6 +1,7 @@
 "use client";
 import { ChevronDown } from "lucide-react";
 import { forwardRef, type SelectHTMLAttributes } from "react";
+import { cn } from "@/lib/cn";
 import { CONTROL, CONTROL_HEIGHT } from "./control";
 
 interface SelectProps extends SelectHTMLAttributes<HTMLSelectElement> {
@@ -20,10 +21,10 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(function Select
   ref,
 ) {
   return (
-    <span className={["relative inline-flex", className].filter(Boolean).join(" ")}>
+    <span className={cn("relative inline-flex", className)}>
       <select
         ref={ref}
-        className={[CONTROL, CONTROL_HEIGHT, "peer w-full appearance-none border-border pl-3 pr-9"].join(" ")}
+        className={cn(CONTROL, CONTROL_HEIGHT, "peer w-full appearance-none border-border pl-3 pr-9")}
         {...rest}
       >
         {children}

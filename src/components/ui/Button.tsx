@@ -1,6 +1,7 @@
 "use client";
 import { Loader2 } from "lucide-react";
 import { forwardRef, type ButtonHTMLAttributes } from "react";
+import { cn } from "@/lib/cn";
 
 type Variant = "primary" | "secondary" | "ghost" | "destructive";
 type Size = "sm" | "md" | "lg";
@@ -44,17 +45,16 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
   },
   ref,
 ) {
-  const classes = [
+  // cn lets a caller's className (a brand color, say) replace the variant's.
+  const classes = cn(
     "inline-flex items-center justify-center gap-2 rounded-md font-medium transition-colors",
     "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background",
     "disabled:cursor-not-allowed",
     variantClasses[variant],
     sizeClasses[size],
-    fullWidth ? "w-full" : "",
+    fullWidth && "w-full",
     className,
-  ]
-    .filter(Boolean)
-    .join(" ");
+  );
 
   return (
     <button

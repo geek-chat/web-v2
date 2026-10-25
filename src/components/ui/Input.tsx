@@ -1,5 +1,6 @@
 "use client";
 import { forwardRef, useId, type InputHTMLAttributes } from "react";
+import { cn } from "@/lib/cn";
 import { CONTROL, CONTROL_HEIGHT } from "./control";
 
 interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
@@ -18,13 +19,13 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
   if (hint && !error) describedBy.push(`${inputId}-hint`);
   if (error) describedBy.push(`${inputId}-error`);
 
-  const inputClasses = [
+  const inputClasses = cn(
     CONTROL,
     CONTROL_HEIGHT,
     "w-full px-3",
     error ? "border-destructive" : "border-border",
     className,
-  ].join(" ");
+  );
 
   return (
     <div className="flex flex-col gap-1.5">
