@@ -97,3 +97,27 @@ describe("rooms store: merging a created room and a refetched list", () => {
     expect(store().rooms?.[0].lastMessageAt).toBe("2026-10-25T05:00:09Z");
   });
 });
+
+describe("rooms store: read points", () => {
+  beforeEach(() => {
+    store().reset();
+  });
+
+  it("moves a member's read point forward only, by time", () => {
+    store().markRead("r1", "u2", "2026-10-25T05:00:00.5Z");
+    store().markRead("r1", "u2", "2026-10-25T05:00:00Z"); // older, though later as a string
+    expect(store().reads).toEqual({ r1: { u2: "2026-10-25T05:00:00.5Z" } });
+
+    store().markRead("r1", "u2", "2026-10-25T05:00:01Z");
+    expect(store().reads.r1.u2).toBe("2026-10-25T05:00:01Z");
+  });
+
+  it("forgets the read points of a removed room", () => {
+    store().markRead("r1", "u2", "2026-10-25T05:00:00Z");
+    store().markRead("r2", "u2", "2026-10-25T05:00:00Z");
+
+    store().removeRoom("r1");
+
+    expect(store().reads).toEqual({ r2: { u2: "2026-10-25T05:00:00Z" } });
+  });
+});

@@ -236,3 +236,26 @@ describe("messages store: loading, tombstones and ordering", () => {
     expect(store().epoch).toBe(before + 1);
   });
 });
+
+describe("compareInstants and oldestServerCreatedAt", () => {
+  it("orders by time, then by the digits past milliseconds", async () => {
+    const { compareInstants } = await import("./messages");
+
+    expect(compareInstants("2026-10-25T05:00:25.5Z", "2026-10-25T05:00:25Z")).toBeGreaterThan(0);
+    expect(compareInstants("2026-10-25T05:00:25.123100Z", "2026-10-25T05:00:25.1239Z")).toBeLessThan(0);
+    expect(compareInstants("2026-10-25T05:00:25Z", "2026-10-25T05:00:25.000Z")).toBe(0);
+  });
+
+  it("finds the oldest server row and skips local ones", async () => {
+    const { oldestServerCreatedAt } = await import("./messages");
+    store().reset();
+    store().addPending({ roomId: ROOM, clientMessageId: "c1", senderId: "u1", content: "hi" });
+    expect(oldestServerCreatedAt(rows())).toBeNull();
+
+    store().mergeServerMessages(ROOM, [
+      server("m2", "2026-10-25T05:00:02.5Z"),
+      server("m1", "2026-10-25T05:00:01.123456Z"),
+    ]);
+    expect(oldestServerCreatedAt(rows())).toBe("2026-10-25T05:00:01.123456Z");
+  });
+});

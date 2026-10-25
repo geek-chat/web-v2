@@ -104,16 +104,21 @@ function compareStrings(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
+/**
+ * Orders two ISO-8601 instants by time, microseconds included: within one
+ * millisecond the fraction digits decide. Use this, never string order, for
+ * any server timestamp (createdAt, lastMessageAt, lastReadAt).
+ */
+export function compareInstants(a: string, b: string): number {
+  const byTime = toEpochMs(a) - toEpochMs(b);
+  if (byTime) return byTime;
+  return compareStrings(fractionDigits(a), fractionDigits(b));
+}
+
 function compareRows(a: ChatMessage, b: ChatMessage): number {
   if (a.serverTime !== b.serverTime) return a.serverTime ? -1 : 1;
   if (!a.serverTime) return 0; // stable sort keeps the order they were added
-  const byTime = toEpochMs(a.createdAt) - toEpochMs(b.createdAt);
-  if (byTime) return byTime;
-  // Same millisecond: the server keeps microseconds, so compare those before the id.
-  return (
-    compareStrings(fractionDigits(a.createdAt), fractionDigits(b.createdAt)) ||
-    compareStrings(a.id, b.id)
-  );
+  return compareInstants(a.createdAt, b.createdAt) || compareStrings(a.id, b.id);
 }
 
 function toRow(roomId: string, message: ServerMessage, existing?: ChatMessage): ChatMessage {
@@ -166,6 +171,11 @@ export function findByClientMessageId(
     if (row) return row;
   }
   return undefined;
+}
+
+/** The oldest createdAt the server gave for this list, as its exact string: the cursor for older pages. */
+export function oldestServerCreatedAt(list: readonly ChatMessage[]): string | null {
+  return list.find((row) => row.serverTime)?.createdAt ?? null;
 }
 
 /** The newest createdAt the server gave for this list, as its exact string: the backfill cursor. */

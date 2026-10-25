@@ -165,6 +165,9 @@ function bindEvents(client: ChatWSClient): () => void {
     client.on("message_burned", ({ roomId, messageId }) => {
       messages().removeMessages(roomId, [messageId]);
     }),
+    client.on("read_update", ({ roomId, userId, lastReadAt }) => {
+      rooms().markRead(roomId, userId, lastReadAt);
+    }),
     client.on("room_expiring", ({ roomId, roomName, expiresAt }) => {
       ws().markRoomExpiring(roomId, { roomName, expiresAt });
       ui.notify({ kind: "roomExpiring", roomId, roomName, expiresAt });

@@ -9,7 +9,7 @@
  */
 import { create } from "zustand";
 import type { Room } from "@/lib/api/rooms";
-import { toEpochMs } from "@/store/messages";
+import { compareInstants } from "@/store/messages";
 
 interface RoomsState {
   /** null until the list is loaded for the first time. */
@@ -17,6 +17,12 @@ interface RoomsState {
   /** The room on screen, set by the room view. */
   currentRoomId: string | null;
   stale: boolean;
+  /**
+   * Read points from read_update: roomId → userId → lastReadAt (the createdAt
+   * of the message read). The server exposes no starting value, so receipts
+   * appear only after a member reads while this tab is connected.
+   */
+  reads: Record<string, Record<string, string>>;
 
   /**
    * Stores a freshly fetched list and clears `stale`. A lastMessageAt that a
@@ -33,19 +39,22 @@ interface RoomsState {
   /** Moves lastMessageAt forward for a new message, or flags the list stale for an unknown room. */
   touchRoom: (roomId: string, createdAt: string) => void;
   setCurrentRoom: (roomId: string | null) => void;
+  /** Moves a member's read point forward only. */
+  markRead: (roomId: string, userId: string, lastReadAt: string) => void;
   reset: () => void;
 }
 
 /** The later of two optional instants. */
 function later(a: string | null, b: string | null): string | null {
   if (!a || !b) return a ?? b;
-  return toEpochMs(a) >= toEpochMs(b) ? a : b;
+  return compareInstants(a, b) >= 0 ? a : b;
 }
 
 export const useRoomsStore = create<RoomsState>((set) => ({
   rooms: null,
   currentRoomId: null,
   stale: false,
+  reads: {},
 
   setRooms: (rooms) =>
     set((state) => ({
@@ -77,14 +86,18 @@ export const useRoomsStore = create<RoomsState>((set) => ({
     }),
 
   removeRoom: (roomId) =>
-    set((state) => (state.rooms ? { rooms: state.rooms.filter((r) => r.id !== roomId) } : state)),
+    set((state) => {
+      const reads = { ...state.reads };
+      delete reads[roomId];
+      return { reads, rooms: state.rooms ? state.rooms.filter((r) => r.id !== roomId) : state.rooms };
+    }),
 
   touchRoom: (roomId, createdAt) =>
     set((state) => {
       if (!state.rooms) return state; // the first load will bring it
       const room = state.rooms.find((r) => r.id === roomId);
       if (!room) return { stale: true };
-      if (room.lastMessageAt && toEpochMs(room.lastMessageAt) >= toEpochMs(createdAt)) return state;
+      if (room.lastMessageAt && compareInstants(room.lastMessageAt, createdAt) >= 0) return state;
       return {
         rooms: state.rooms.map((r) => (r === room ? { ...r, lastMessageAt: createdAt } : r)),
       };
@@ -92,5 +105,12 @@ export const useRoomsStore = create<RoomsState>((set) => ({
 
   setCurrentRoom: (currentRoomId) => set({ currentRoomId }),
 
-  reset: () => set({ rooms: null, currentRoomId: null, stale: false }),
+  markRead: (roomId, userId, lastReadAt) =>
+    set((state) => {
+      const held = state.reads[roomId]?.[userId];
+      if (held && compareInstants(held, lastReadAt) >= 0) return state;
+      return { reads: { ...state.reads, [roomId]: { ...state.reads[roomId], [userId]: lastReadAt } } };
+    }),
+
+  reset: () => set({ rooms: null, currentRoomId: null, stale: false, reads: {} }),
 }));

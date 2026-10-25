@@ -216,3 +216,27 @@ describe("chat connection", () => {
     expect(FakeWebSocket.instances).toHaveLength(2);
   });
 });
+
+describe("chat connection: read receipts", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.stubGlobal("WebSocket", FakeWebSocket);
+    FakeWebSocket.instances = [];
+    setTokens({ accessToken: makeJwt(Math.floor(Date.now() / 1000) + 3600), refreshToken: "r1" });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("records read_update as the member's read point", async () => {
+    const chat = await load();
+    chat.acquireChat({ notify: vi.fn() });
+    const socket = FakeWebSocket.latest();
+    socket.open();
+
+    socket.emit("read_update", { roomId: "r1", userId: "u2", lastReadAt: "2026-10-25T05:00:01Z" });
+
+    expect(chat.useRoomsStore.getState().reads).toEqual({ r1: { u2: "2026-10-25T05:00:01Z" } });
+  });
+});

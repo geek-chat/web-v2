@@ -191,3 +191,59 @@ describe("backfill: messages that commit out of createdAt order", () => {
     expect(ids("r1")).toEqual(["A", "B"]);
   });
 });
+
+describe("backfill: older pages and the first page's end", () => {
+  beforeEach(() => {
+    list.mockReset();
+    store().reset();
+  });
+
+  it("asks for the page before the oldest server row and reports the start", async () => {
+    const { loadOlderMessages, OLDER_PAGE_SIZE } = await import("./backfill");
+    store().mergeServerMessages("r1", [dto("m5", 5)]);
+    list.mockResolvedValueOnce([dto("m4", 4), dto("m3", 3)]);
+
+    await expect(loadOlderMessages("r1")).resolves.toBe(true);
+
+    expect(list).toHaveBeenCalledWith("r1", {
+      direction: "backward",
+      cursor: "2026-10-25T05:00:05.123456Z",
+      limit: OLDER_PAGE_SIZE,
+    });
+    expect(ids("r1")).toEqual(["m3", "m4", "m5"]);
+  });
+
+  it("sends one request at a time per room", async () => {
+    const { loadOlderMessages } = await import("./backfill");
+    store().mergeServerMessages("r1", [dto("m5", 5)]);
+    let resolvePage: (rows: MessageDto[]) => void = () => {};
+    list.mockReturnValueOnce(new Promise((resolve) => (resolvePage = resolve)));
+
+    const first = loadOlderMessages("r1");
+    await expect(loadOlderMessages("r1")).resolves.toBe(false);
+    resolvePage([]);
+    await expect(first).resolves.toBe(true);
+
+    expect(list).toHaveBeenCalledTimes(1);
+  });
+
+  it("drops an older page that lands after the session ended", async () => {
+    const { loadOlderMessages } = await import("./backfill");
+    store().mergeServerMessages("r1", [dto("m5", 5)]);
+    list.mockImplementationOnce(async () => {
+      store().reset();
+      return [dto("m4", 4)];
+    });
+
+    await loadOlderMessages("r1");
+
+    expect(store().byRoom).toEqual({});
+  });
+
+  it("says whether the first page already reaches the start", async () => {
+    const { loadRoomMessages } = await import("./backfill");
+    list.mockResolvedValueOnce([dto("m1", 1)]);
+
+    await expect(loadRoomMessages("r1")).resolves.toBe(true);
+  });
+});
