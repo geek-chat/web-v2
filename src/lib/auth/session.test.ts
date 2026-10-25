@@ -90,3 +90,57 @@ describe("startSession", () => {
     expect(useAuthStore.getState()).toMatchObject({ status: "authenticated", user: USER });
   });
 });
+
+describe("verifySession ordering", () => {
+  const NEW_USER = { id: "u2", nickname: "Bob", username: "bob", profileImageUrl: null };
+
+  function deferMe() {
+    let settle!: { resolve: (u: typeof USER) => void; reject: (e: unknown) => void };
+    meMock.mockImplementationOnce(
+      () =>
+        new Promise((resolve, reject) => {
+          settle = { resolve, reject };
+        }),
+    );
+    return () => settle;
+  }
+
+  it("lets the newest verify decide when an older one finishes last", async () => {
+    setTokens(TOKENS);
+    const oldCall = deferMe();
+    const older = verifySession();
+    meMock.mockResolvedValueOnce(NEW_USER);
+
+    await verifySession();
+    oldCall().resolve(USER);
+    await older;
+
+    expect(useAuthStore.getState()).toMatchObject({ status: "authenticated", user: NEW_USER });
+  });
+
+  it("ignores an older verify's failure that arrives after a newer one succeeded", async () => {
+    setTokens(TOKENS);
+    const oldCall = deferMe();
+    const older = verifySession();
+    meMock.mockResolvedValueOnce(NEW_USER);
+
+    await verifySession();
+    oldCall().reject(new AuthExpiredError(401, null, "Refresh token rejected"));
+    await older;
+
+    expect(useAuthStore.getState().status).toBe("authenticated");
+    expect(getAccessToken()).toBe(TOKENS.accessToken);
+  });
+
+  it("does not bring back a session that was cleared while /auth/me was in flight", async () => {
+    setTokens(TOKENS);
+    const call = deferMe();
+    const pending = verifySession();
+
+    useAuthStore.getState().clearSession(); // e.g. the user pressed logout
+    call().resolve(USER);
+    await pending;
+
+    expect(useAuthStore.getState()).toMatchObject({ status: "unauthenticated", user: null });
+  });
+});

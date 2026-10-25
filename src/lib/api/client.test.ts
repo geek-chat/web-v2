@@ -115,3 +115,55 @@ describe("apiFetch single-flight refresh", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });
+
+// A boot check on the old tokens can still be refreshing when an OAuth callback
+// or a login stores a new pair. The old request's outcome must not touch it.
+describe("apiFetch when a new session is stored mid-request", () => {
+  const expired = () => makeJwt(Math.floor(Date.now() / 1000) - 10);
+
+  function installSlowRefresh() {
+    let respond!: (res: Response) => void;
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      if (String(input) === `${API}/auth/refresh`) {
+        return new Promise<Response>((resolve) => {
+          respond = resolve;
+        });
+      }
+      return Promise.resolve(jsonResponse(200, { ok: true }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    return { respondToRefresh: (res: Response) => respond(res) };
+  }
+
+  beforeEach(() => {
+    setTokens({ accessToken: expired(), refreshToken: "old-refresh" });
+  });
+
+  it("keeps the new session when the old session's refresh is rejected", async () => {
+    const { respondToRefresh } = installSlowRefresh();
+    const onLogout = vi.fn();
+    window.addEventListener("auth:logout", onLogout);
+
+    const oldRequest = apiFetch("/api/a"); // expired token: refresh with old-refresh starts
+    setTokens({ accessToken: NEW_ACCESS, refreshToken: "new-refresh" });
+    respondToRefresh(unauthorized());
+
+    await expect(oldRequest).rejects.toBeInstanceOf(AuthExpiredError);
+    window.removeEventListener("auth:logout", onLogout);
+    expect(getAccessToken()).toBe(NEW_ACCESS);
+    expect(getRefreshToken()).toBe("new-refresh");
+    expect(onLogout).not.toHaveBeenCalled();
+  });
+
+  it("does not overwrite the new session with the old session's rotated pair", async () => {
+    const { respondToRefresh } = installSlowRefresh();
+
+    const oldRequest = apiFetch("/api/a");
+    setTokens({ accessToken: NEW_ACCESS, refreshToken: "new-refresh" });
+    respondToRefresh(jsonResponse(200, { accessToken: "rotated-old", refreshToken: "rotated-old-refresh" }));
+
+    await expect(oldRequest).resolves.toEqual({ ok: true });
+    expect(getAccessToken()).toBe(NEW_ACCESS);
+    expect(getRefreshToken()).toBe("new-refresh");
+  });
+});

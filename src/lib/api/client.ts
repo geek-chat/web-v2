@@ -69,6 +69,18 @@ function emitLogout(): void {
   }
 }
 
+/**
+ * End the session a request started with: clear the tokens and announce the
+ * logout. Skipped when the stored refresh token changed meanwhile, which means
+ * a login or an OAuth callback stored a new session while this request was in
+ * flight; clearing then would wipe that new session.
+ */
+function endSession(startedWith: string | null): void {
+  if (getRefreshToken() !== startedWith) return;
+  clearTokens();
+  emitLogout();
+}
+
 /** Read the response body once, returning a parsed error body if JSON, else null. */
 async function readErrorBody(res: Response): Promise<ApiErrorBody | null> {
   try {
@@ -121,6 +133,13 @@ async function performRefresh(): Promise<string> {
       null,
       `Refresh response shape invalid: ${parsed.error.message}`,
     );
+  }
+  if (getRefreshToken() !== refreshToken) {
+    // A newer session was stored while this refresh was in flight. Keep it
+    // instead of overwriting it with the old session's rotated pair.
+    const current = getAccessToken();
+    if (!current) throw new AuthExpiredError(401, null, "Session ended during refresh");
+    return current;
   }
   setTokens(parsed.data);
   return parsed.data.accessToken;
@@ -197,6 +216,10 @@ export async function apiFetch<T = unknown>(
   const auth = init.auth !== false;
   const parse = init.parse ?? "json";
   const url = path.startsWith("http") ? path : `${env.NEXT_PUBLIC_API_URL}${path}`;
+  // Identifies the session this request belongs to; see endSession(). A
+  // successful refresh rotates the refresh token, so it is re-read after each
+  // one: the rotated pair is still this session.
+  let startedWith = auth ? getRefreshToken() : null;
 
   let token: string | null = null;
   if (auth) {
@@ -211,11 +234,9 @@ export async function apiFetch<T = unknown>(
     if (isExpiringSoon(token)) {
       try {
         token = await refreshOnce();
+        startedWith = getRefreshToken();
       } catch (err) {
-        if (err instanceof AuthExpiredError) {
-          clearTokens();
-          emitLogout();
-        }
+        if (err instanceof AuthExpiredError) endSession(startedWith);
         throw err;
       }
     }
@@ -236,11 +257,9 @@ export async function apiFetch<T = unknown>(
     let newToken: string;
     try {
       newToken = await refreshOnce();
+      startedWith = getRefreshToken();
     } catch (err) {
-      if (err instanceof AuthExpiredError) {
-        clearTokens();
-        emitLogout();
-      }
+      if (err instanceof AuthExpiredError) endSession(startedWith);
       throw err;
     }
     res = await send(newToken);
@@ -248,8 +267,7 @@ export async function apiFetch<T = unknown>(
     // bail out instead of looping.
     if (res.status === 401) {
       const body = await readErrorBody(res);
-      clearTokens();
-      emitLogout();
+      endSession(startedWith);
       throw new AuthExpiredError(401, body, body?.message ?? "Unauthorized after refresh");
     }
   }
