@@ -1,6 +1,7 @@
 "use client";
 
 import { Timer } from "lucide-react";
+import { ButtonBase } from "@/components/ui/ButtonBase";
 import { useNow } from "@/hooks/useNow";
 import { formatLeft } from "@/lib/time";
 import type { ChatMessage } from "@/store/messages";
@@ -67,13 +68,12 @@ export function MessageItem({ message, mine, senderName, readLabel, onRetry }: M
       {message.status === "failed" && message.clientMessageId && (
         <span className="flex items-center gap-2 text-xs text-destructive">
           {t("chat.message.failedLabel")}
-          <button
-            type="button"
+          <ButtonBase
             onClick={() => onRetry(message.clientMessageId!)}
-            className="underline underline-offset-2"
+            className="rounded-sm underline underline-offset-2"
           >
             {t("chat.message.retry")}
-          </button>
+          </ButtonBase>
         </span>
       )}
     </div>

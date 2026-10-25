@@ -1,3 +1,7 @@
+/** The keyboard focus ring every control and button shares. */
+export const FOCUS_RING =
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background";
+
 /**
  * The one look of a form control. Input, Select and Textarea all start from
  * these classes, so text, border, focus ring and the disabled state cannot
@@ -8,7 +12,7 @@
 export const CONTROL = [
   "rounded-md border bg-background text-sm text-foreground",
   "placeholder:text-muted-foreground",
-  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+  FOCUS_RING,
   "disabled:cursor-not-allowed disabled:opacity-50",
 ].join(" ");
 

@@ -8,6 +8,7 @@ import { describeApiError } from "@/lib/api/errorMessage";
 import { useUserSearch } from "@/hooks/useUserSearch";
 import { Avatar } from "@/components/ui/Avatar";
 import { Button } from "@/components/ui/Button";
+import { ButtonBase } from "@/components/ui/ButtonBase";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { useRoomsStore } from "@/store/rooms";
@@ -71,8 +72,7 @@ export function CreateRoomForm() {
         <ul className="flex flex-col gap-1">
           {results.map((user) => (
             <li key={user.id}>
-              <button
-                type="button"
+              <ButtonBase
                 onClick={() => toggle(user)}
                 aria-pressed={isPicked(user)}
                 className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left hover:bg-muted ${isPicked(user) ? "bg-muted" : ""}`}
@@ -82,7 +82,7 @@ export function CreateRoomForm() {
                   <span className="text-sm">{user.nickname}</span>
                   {user.username && <span className="text-xs text-muted-foreground">@{user.username}</span>}
                 </span>
-              </button>
+              </ButtonBase>
             </li>
           ))}
           {!searching && results.length === 0 && (
@@ -96,14 +96,13 @@ export function CreateRoomForm() {
           <ul className="flex flex-wrap gap-2">
             {selected.map((user) => (
               <li key={user.id}>
-                <button
-                  type="button"
+                <ButtonBase
                   onClick={() => toggle(user)}
                   aria-label={t("rooms.create.remove", { name: user.nickname })}
                   className="rounded-full bg-muted px-3 py-1 text-sm hover:bg-border/40"
                 >
                   {user.nickname} ×
-                </button>
+                </ButtonBase>
               </li>
             ))}
           </ul>

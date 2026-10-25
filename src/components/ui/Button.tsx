@@ -2,6 +2,7 @@
 import { Loader2 } from "lucide-react";
 import { forwardRef, type ButtonHTMLAttributes } from "react";
 import { cn } from "@/lib/cn";
+import { ButtonBase } from "./ButtonBase";
 
 type Variant = "primary" | "secondary" | "ghost" | "destructive";
 type Size = "sm" | "md" | "lg";
@@ -40,16 +41,14 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
     disabled,
     className = "",
     children,
-    type,
     ...rest
   },
   ref,
 ) {
   // cn lets a caller's className (a brand color, say) replace the variant's.
+  // ButtonBase adds the type default, the focus ring and the disabled cursor.
   const classes = cn(
     "inline-flex items-center justify-center gap-2 rounded-md font-medium transition-colors",
-    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background",
-    "disabled:cursor-not-allowed",
     variantClasses[variant],
     sizeClasses[size],
     fullWidth && "w-full",
@@ -57,9 +56,8 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
   );
 
   return (
-    <button
+    <ButtonBase
       ref={ref}
-      type={type ?? "button"}
       className={classes}
       disabled={disabled || loading}
       aria-busy={loading || undefined}
@@ -67,6 +65,6 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
     >
       {loading ? <Loader2 className="size-4 animate-spin" aria-hidden /> : null}
       {children}
-    </button>
+    </ButtonBase>
   );
 });
