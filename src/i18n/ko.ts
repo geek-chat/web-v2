@@ -52,6 +52,27 @@ export const ko = {
   // Auth — OAuth buttons
   "auth.oauth.google": "Google로 계속",
   "auth.oauth.naver": "네이버로 계속",
+  "auth.provider.GOOGLE": "Google",
+  "auth.provider.NAVER": "네이버",
+
+  // Auth — OAuth callback pages
+  "auth.callback.processing": "로그인 처리 중…",
+  "auth.link.title": "계정 연결",
+  "auth.link.body": "{nickname} 님의 계정이 이미 있습니다. {provider} 로그인을 이 계정에 연결할까요?",
+  "auth.link.confirm": "연결하기",
+  "auth.link.decline": "새 계정으로 시작",
+  "auth.link.success": "계정을 연결했습니다",
+  "auth.complete.title": "닉네임 정하기",
+  "auth.complete.description": "GeekChat에서 쓸 닉네임을 정해 주세요",
+  "auth.complete.submit": "시작하기",
+  // Keyed by the backend's /auth/error?error=<code> values (AuthController.kt callback)
+  "auth.callbackError.title": "로그인하지 못했습니다",
+  "auth.callbackError.oauth_cancelled": "로그인을 취소했습니다",
+  "auth.callbackError.missing_params": "로그인 요청에 필요한 정보가 빠졌습니다",
+  "auth.callbackError.invalid_state": "보안 확인에 실패했습니다. 처음부터 다시 시도하세요",
+  "auth.callbackError.oauth_failed": "소셜 로그인에 실패했습니다",
+  "auth.callbackError.unknown": "알 수 없는 이유로 로그인하지 못했습니다",
+  "auth.callbackError.back": "처음으로",
 
   // Auth — errors. Chosen by HTTP status + call context in src/lib/api/errorMessage.ts,
   // because the server's `error` field is the reason phrase, not the domain code.
