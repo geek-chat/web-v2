@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { loadOlderMessages, loadRoomMessages } from "@/lib/chat/backfill";
-import { useMessagesStore } from "@/store/messages";
+import { type ChatMessage, useMessagesStore } from "@/store/messages";
+
+const NO_MESSAGES: ChatMessage[] = [];
 
 /**
  * One room's messages for its view: loads the first page when the room is not
@@ -26,7 +28,10 @@ export function useRoomMessages(roomId: string) {
         if (atStart) setReachedStart(true);
         setAnswered(true);
       },
-      (err: unknown) => setError(err),
+      (err: unknown) => {
+        setError(err);
+        setAnswered(true); // a backfill that failed after the merge still leaves the page to show
+      },
     );
   }, [roomId]);
 
@@ -36,6 +41,7 @@ export function useRoomMessages(roomId: string) {
 
   const retry = useCallback(() => {
     setError(null);
+    setAnswered(false);
     loadFirst();
   }, [loadFirst]);
 
@@ -51,5 +57,8 @@ export function useRoomMessages(roomId: string) {
     }
   }, [roomId, loadingOlder, reachedStart]);
 
-  return { messages: messages ?? [], loaded, error, retry, loadOlder, loadingOlder, reachedStart };
+  // Rows stay out until the list shows them: useMarkRead reads these, and a
+  // mark_read can delete a burn-after-read message (RULES.md R6).
+  const shown = loaded && messages ? messages : NO_MESSAGES;
+  return { messages: shown, loaded, error, retry, loadOlder, loadingOlder, reachedStart };
 }

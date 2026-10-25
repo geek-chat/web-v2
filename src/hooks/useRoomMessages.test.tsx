@@ -87,4 +87,46 @@ describe("useRoomMessages first load", () => {
     expect(result.current.loaded).toBe(true);
     expect(result.current.reachedStart).toBe(true);
   });
+
+  const bobSays = {
+    id: "m1",
+    senderId: "u2",
+    senderNickname: "Bob",
+    content: "반가워",
+    type: "TEXT",
+    createdAt: "2026-10-25T05:00:00Z",
+    expiresAt: null,
+    replyToMessageId: null,
+    burnAfterRead: false,
+  } as const;
+
+  it("hands out no rows before the list shows them, so mark_read cannot see them", async () => {
+    let answer: (atStart: boolean) => void = () => {};
+    vi.mocked(loadRoomMessages).mockImplementation((roomId) => {
+      useMessagesStore.getState().mergeServerMessages(roomId, [bobSays]);
+      return new Promise<boolean>((resolve) => {
+        answer = resolve;
+      });
+    });
+
+    const { result } = renderHook(() => useRoomMessages("r1"));
+    expect(result.current.messages).toEqual([]);
+
+    await act(async () => answer(false));
+
+    expect(result.current.messages.map((m) => m.id)).toEqual(["m1"]);
+  });
+
+  it("keeps a first page whose backfill failed", async () => {
+    vi.mocked(loadRoomMessages).mockImplementation(async (roomId) => {
+      useMessagesStore.getState().mergeServerMessages(roomId, [bobSays]);
+      throw new TypeError("Failed to fetch");
+    });
+
+    const { result } = renderHook(() => useRoomMessages("r1"));
+
+    await waitFor(() => expect(result.current.error).toBeInstanceOf(TypeError));
+    expect(result.current.loaded).toBe(true);
+    expect(result.current.messages.map((m) => m.id)).toEqual(["m1"]);
+  });
 });
