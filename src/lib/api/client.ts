@@ -74,8 +74,11 @@ function emitLogout(): void {
  * logout. Skipped when the stored refresh token changed meanwhile, which means
  * a login or an OAuth callback stored a new session while this request was in
  * flight; clearing then would wipe that new session.
+ *
+ * Exported for the WebSocket client (src/lib/ws/client.ts), which ends a
+ * session under the same guard.
  */
-function endSession(startedWith: string | null): void {
+export function endSession(startedWith: string | null): void {
   if (getRefreshToken() !== startedWith) return;
   clearTokens();
   emitLogout();
@@ -145,8 +148,12 @@ async function performRefresh(): Promise<string> {
   return parsed.data.accessToken;
 }
 
-/** Single-flight wrapper around performRefresh. */
-function refreshOnce(): Promise<string> {
+/**
+ * Single-flight wrapper around performRefresh. Exported for the WebSocket
+ * client: the server rotates refresh tokens, so a second refresh path racing
+ * this one would invalidate a token and log the user out (RULES.md R2).
+ */
+export function refreshOnce(): Promise<string> {
   if (refreshPromise) return refreshPromise;
   refreshPromise = performRefresh().finally(() => {
     // Clear the slot regardless of outcome so the next caller can retry.
