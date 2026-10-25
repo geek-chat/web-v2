@@ -3,6 +3,8 @@
 import Link from "next/link";
 import type { Room } from "@/lib/api/rooms";
 import { Avatar } from "@/components/ui/Avatar";
+import { useNow } from "@/hooks/useNow";
+import { formatLeft, ROOM_EXPIRING_SOON_MS } from "@/lib/time";
 import { toEpochMs } from "@/store/messages";
 import { t } from "@/i18n";
 
@@ -57,12 +59,25 @@ export function RoomListItem({ room, currentUserId, active, expiring }: RoomList
             {formatActivity(room.lastMessageAt)}
           </time>
         )}
-        {expiring && (
-          <span className="rounded bg-destructive/20 px-1.5 text-xs text-destructive">
-            {t("rooms.expiring")}
-          </span>
-        )}
+        {(expiring || room.expiresAt) && <RoomExpiry expiresAt={room.expiresAt} expiring={expiring} />}
       </span>
     </Link>
   );
+}
+
+/**
+ * A TTL room's time left, or "곧 만료" once room_expiring arrived or ten
+ * minutes remain: the server checks every 10 minutes, so its warning can come
+ * late. Its own timer, so only this badge re-renders.
+ */
+function RoomExpiry({ expiresAt, expiring }: { expiresAt: string | null; expiring: boolean }) {
+  const now = useNow(30_000);
+  const leftMs = expiresAt ? toEpochMs(expiresAt) - now : Number.NaN;
+  const left = formatLeft(leftMs);
+  if (expiring || !left || leftMs <= ROOM_EXPIRING_SOON_MS) {
+    return (
+      <span className="rounded bg-destructive/20 px-1.5 text-xs text-destructive">{t("rooms.expiring")}</span>
+    );
+  }
+  return <span className="text-xs text-muted-foreground">{t("rooms.expiresIn", { left })}</span>;
 }

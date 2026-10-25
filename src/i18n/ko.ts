@@ -122,6 +122,16 @@ export const ko = {
   "invite.copyManually": "자동 복사가 되지 않습니다. 주소를 직접 선택해 복사해 주세요",
   "invite.expiresAt": "{time}까지 쓸 수 있습니다. 링크가 있는 사람은 누구나 이 방에 들어올 수 있습니다",
   "invite.close": "닫기",
+  "time.left.seconds": "{n}초",
+  "time.left.minutes": "{n}분",
+  "time.left.hours": "{n}시간",
+  "time.left.days": "{n}일",
+  "rooms.expiresIn": "{left} 남음",
+  "chat.room.temporary": "임시 방, {left} 남음",
+  "chat.room.expiresIn": "이 방은 {clock} 뒤 만료됩니다",
+  "chat.room.expiringNow": "이 방은 곧 만료됩니다",
+  "chat.message.expiresIn": "{left} 후 사라짐",
+  "chat.message.expiringNow": "곧 사라짐",
 
   // Chat screen (src/components/chat)
   "chat.input.label": "메시지",
@@ -149,7 +159,6 @@ export const ko = {
   "chat.ws.connecting": "연결하는 중…",
   "chat.ws.reconnecting": "다시 연결하는 중…",
   "chat.ws.blocked": "다른 탭에서 열려 있어 연결하지 못했습니다",
-  "chat.room.expiresAt": "이 방은 {time}에 만료됩니다",
 
   // Me (profile)
   "me.title": "내 정보",

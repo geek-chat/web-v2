@@ -1,6 +1,8 @@
 "use client";
 
 import { Timer } from "lucide-react";
+import { useNow } from "@/hooks/useNow";
+import { formatLeft } from "@/lib/time";
 import type { ChatMessage } from "@/store/messages";
 import { toEpochMs } from "@/store/messages";
 import { t } from "@/i18n";
@@ -22,6 +24,21 @@ export interface MessageItemProps {
   onRetry: (clientMessageId: string) => void;
 }
 
+/**
+ * Time left on a disappearing message, by this device's clock and for display
+ * only: message_expired removes the row, up to a minute after the deadline.
+ */
+function MessageExpiry({ expiresAt }: { expiresAt: string }) {
+  const now = useNow(1000);
+  const left = formatLeft(toEpochMs(expiresAt) - now);
+  return (
+    <span className="flex items-center gap-1">
+      <Timer size={12} aria-label={t("chat.message.disappearing")} />
+      {left ? t("chat.message.expiresIn", { left }) : t("chat.message.expiringNow")}
+    </span>
+  );
+}
+
 /** One bubble: mine on the right, others on the left, with send state and a retry for failures. */
 export function MessageItem({ message, mine, senderName, readLabel, onRetry }: MessageItemProps) {
   if (message.type === "SYSTEM") {
@@ -40,7 +57,7 @@ export function MessageItem({ message, mine, senderName, readLabel, onRetry }: M
         </p>
         <span className={`flex shrink-0 flex-col gap-0.5 text-[11px] text-muted-foreground ${mine ? "items-end" : "items-start"}`}>
           {readLabel && <span>{readLabel}</span>}
-          {message.expiresAt && <Timer size={12} aria-label={t("chat.message.disappearing")} />}
+          {message.expiresAt && <MessageExpiry expiresAt={message.expiresAt} />}
           <time dateTime={message.createdAt}>{formatTime(message.createdAt)}</time>
         </span>
       </div>

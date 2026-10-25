@@ -4,10 +4,12 @@ import Link from "next/link";
 import { useState } from "react";
 import { InvitePanel } from "@/components/room/InvitePanel";
 import { Button } from "@/components/ui/Button";
+import { useNow } from "@/hooks/useNow";
 import type { Room } from "@/lib/api/rooms";
+import { formatClock, formatLeft, ROOM_EXPIRING_SOON_MS } from "@/lib/time";
 import type { WSStatus } from "@/lib/ws/client";
+import { toEpochMs } from "@/store/messages";
 import { useWsStore } from "@/store/ws";
-import { formatTime } from "./MessageItem";
 import { t, type TranslationKey } from "@/i18n";
 
 const STATUS_LABELS: Partial<Record<WSStatus, TranslationKey>> = {
@@ -26,6 +28,7 @@ export function ChatHeader({ title, room }: { title: string; room: Room | undefi
   const expiring = useWsStore((s) => (room ? s.expiringRooms[room.id] : undefined));
   const statusLabel = STATUS_LABELS[status];
   const [inviting, setInviting] = useState(false);
+  const expiresAt = room?.expiresAt ?? expiring?.expiresAt ?? null;
 
   return (
     <header className="flex flex-col border-b border-border">
@@ -53,11 +56,29 @@ export function ChatHeader({ title, room }: { title: string; room: Room | undefi
         </div>
       </div>
       {inviting && room?.type === "GROUP" && <InvitePanel roomId={room.id} onClose={() => setInviting(false)} />}
-      {expiring && (
-        <p role="alert" className="bg-destructive/15 px-4 py-2 text-xs text-destructive">
-          {t("chat.room.expiresAt", { time: formatTime(expiring.expiresAt) })}
-        </p>
-      )}
+      {expiresAt && <RoomLifetime expiresAt={expiresAt} warned={Boolean(expiring)} />}
     </header>
+  );
+}
+
+/**
+ * A TTL room's lifetime under the title: the time left, then a countdown
+ * banner for the last ten minutes or once room_expiring arrived. The
+ * countdown is this device's estimate; room_expired is what closes the room.
+ */
+function RoomLifetime({ expiresAt, warned }: { expiresAt: string; warned: boolean }) {
+  const now = useNow(1000);
+  const leftMs = toEpochMs(expiresAt) - now;
+  if (!warned && leftMs > ROOM_EXPIRING_SOON_MS) {
+    return (
+      <p className="px-4 pb-2 text-xs text-muted-foreground">
+        {t("chat.room.temporary", { left: formatLeft(leftMs) ?? "" })}
+      </p>
+    );
+  }
+  return (
+    <p role="alert" className="bg-destructive/15 px-4 py-2 text-xs text-destructive">
+      {leftMs > 0 ? t("chat.room.expiresIn", { clock: formatClock(leftMs) }) : t("chat.room.expiringNow")}
+    </p>
   );
 }
