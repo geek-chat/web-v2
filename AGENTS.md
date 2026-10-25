@@ -65,5 +65,7 @@ Frontend OAuth callbacks must match backend hash format exactly:
 - Before completing a session: run the **refresh-context** skill (auto-triggered by Stop hook). It updates HANDOFF/, regenerates progress markers, and prepares the next session for context-fresh resumption.
 - Test policy: existing tests are spec — fix production code, not tests. New features require ≥1 test.
 - Verification: `npm test`, `npx tsc --noEmit`, `npm run lint`, `npm run build`, one at a time through `memguard -- <command>`.
-- Push-time quick check for agent hooks: <!-- repo-verify: npx tsc --noEmit -->
+- Push-time quick check for agent hooks: the comment below. The hook reads it only when it sits on a line of its own.
+
+<!-- repo-verify: npx tsc --noEmit -->
 - Commit policy: atomic per logical unit. Use HEREDOC for messages. Never amend (always new commit on hook failure).
