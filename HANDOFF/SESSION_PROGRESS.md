@@ -309,6 +309,7 @@ LOW-2 수정 후보 (미실측): 지금처럼 즉시 지운 뒤 `queueMicrotask`
 | S13 | server-v2 `ChatWebSocketHandler.afterConnectionEstablished` | 연결을 받아들여도 아무 프레임을 보내지 않아서, 클라이언트는 1초 동안 거부가 없으면 수락으로 본다. `connected` 같은 프레임이 있으면 추정할 필요가 없다 |
 | S14 | server-v2 websocket 모듈 | 로그아웃과 탈퇴 때 그 사용자의 소켓을 닫지 않는다(닫는 곳은 `reject` 하나). heartbeat 설정도 없어서 끊긴 연결이 열린 것처럼 남을 수 있다. 배포 환경 프록시의 idle timeout도 확인이 필요하다 |
 | S15 | server-v2 `RoomMemberResponse`, 방 목록 API | 멤버의 읽음 시각(`lastReadAt`)을 주는 REST가 없다. 새로 연 화면은 접속 뒤 `read_update`가 올 때까지 읽음 표시를 그릴 수 없다 |
+| S17 | server-v2 `AuthController.googleStart` | `scope`에 공백이 든 `"openid email profile"`을 넣고 `.build(true)`로 만들어서 `IllegalArgumentException`이 난다. `/error`가 막혀 있어서(S10) 응답은 본문 없는 401이다. 2026-10-25 Render에서 `/auth/google`은 401, `/auth/naver`는 302였고, Spring 7.0.9 jshell로 예외를 재현했다. `.encode().build()`로 바꾸면 생성된다. 이 경로의 테스트가 없다. **Google 로그인이 막힘** |
 | S7 | server-v2 `ChatErrorMapping.kt` | 에러 본문의 `error`가 HTTP reason phrase라서 같은 상태 코드를 쓰는 도메인 에러(예: 가입 409의 유저네임과 이메일)를 구분하려면 영어 메시지 앞부분을 봐야 한다. 안정적인 `code` 필드가 있으면 클라이언트가 메시지 문구에 기대지 않아도 된다 |
 | T1 | `geek-chat-web` main `559d170` | v2가 리다이렉트하는 `/auth/oauth-link`, `/auth/oauth-complete`, `/auth/error` 라우트 파일이 없음. v1 연동은 `/auth/success#linking_required=true` 형식 (`app/auth/success.tsx:18-33`). web-internal 세션에 공유함. 10-25 기준 v1 `feat/v2-transport` 브랜치(`76cb0b1`)에서 처리 중이고 아직 머지 전 |
 
