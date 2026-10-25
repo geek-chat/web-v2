@@ -31,6 +31,9 @@ export const passwordSchema = z
   .regex(/\p{L}/u, "문자를 하나 이상 넣으세요");
 export const nicknameSchema = z
   .string()
+  // The server rejects blank nicknames (@NotBlank on AuthDto), so spaces-only
+  // input must fail here instead of round-tripping to an error.
+  .trim()
   .min(1, "닉네임을 입력하세요")
   .max(20, "닉네임은 최대 20자");
 export const emailSchema = z.email("이메일 형식이 올바르지 않습니다");

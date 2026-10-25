@@ -1,5 +1,15 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { devLogin, passwordSchema } from "./auth";
+import { devLogin, nicknameSchema, passwordSchema } from "./auth";
+
+describe("nicknameSchema", () => {
+  it("trims surrounding spaces", () => {
+    expect(nicknameSchema.parse("  홍길동 ")).toBe("홍길동");
+  });
+
+  it("rejects a blank nickname, which the server's @NotBlank would refuse", () => {
+    expect(nicknameSchema.safeParse("   ").success).toBe(false);
+  });
+});
 
 describe("devLogin", () => {
   afterEach(() => {
