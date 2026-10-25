@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
 import { createInviteLink, inviteUrl, type InviteLink } from "@/lib/api/invite";
 import { toEpochMs } from "@/store/messages";
 import { t } from "@/i18n";
@@ -56,14 +57,14 @@ export function InvitePanel({ roomId, onClose }: { roomId: string; onClose: () =
       {link && url ? (
         <>
           <div className="flex gap-2">
-            <input
+            <Input
               readOnly
               value={url}
               aria-label={t("invite.linkLabel")}
               onFocus={(event) => event.currentTarget.select()}
-              className="min-w-0 flex-1 rounded-md border border-border bg-background px-2 text-xs"
+              className="min-w-0 flex-1"
             />
-            <Button size="sm" onClick={() => void copy(url)}>
+            <Button onClick={() => void copy(url)}>
               {t("invite.copy")}
             </Button>
           </div>

@@ -7,6 +7,8 @@ interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
   label?: string;
   hint?: string;
   error?: string;
+  /** Layout of the outer box (width, flex), not the control's look. */
+  className?: string;
 }
 
 export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
@@ -19,16 +21,10 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
   if (hint && !error) describedBy.push(`${inputId}-hint`);
   if (error) describedBy.push(`${inputId}-error`);
 
-  const inputClasses = cn(
-    CONTROL,
-    CONTROL_HEIGHT,
-    "w-full px-3",
-    error ? "border-destructive" : "border-border",
-    className,
-  );
+  const inputClasses = cn(CONTROL, CONTROL_HEIGHT, "w-full px-3", error ? "border-destructive" : "border-border");
 
   return (
-    <div className="flex flex-col gap-1.5">
+    <div className={cn("flex flex-col gap-1.5", className)}>
       {label ? (
         <label htmlFor={inputId} className="text-sm font-medium text-foreground">
           {label}
