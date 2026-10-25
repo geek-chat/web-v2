@@ -351,52 +351,72 @@ function useUserSearch(query: string) {
 
 ## 3. UI 컴포넌트 (재사용)
 
+`src/components/ui/`가 버튼과 폼 요소의 유일한 출처다. 그 밖에서 날 `<button>`, `<input>`, `<select>`, `<textarea>`를 쓰면 lint 오류가 난다(테스트 파일은 예외, RULES.md R7). 모두 `/dev/ui`(개발 모드만)에서 한 화면에 볼 수 있다.
+
+공통 규칙:
+- 클래스는 `cn()`(`src/lib/cn.ts`, tailwind-merge)으로 합친다. 호출부 `className`이 같은 속성의 variant 클래스를 이기므로 `!`를 쓰지 않는다.
+- 폼 요소의 모양(테두리, 글자, focus ring, disabled)은 `control.ts`의 `CONTROL` 하나에서 온다. focus ring(`FOCUS_RING`)은 버튼과 함께 쓴다.
+- 한 줄 컨트롤(Input, Select)은 `h-10`(`CONTROL_HEIGHT`)이라 md Button과 높이가 같다.
+
+### ButtonBase
+```typescript
+type ButtonBaseProps = React.ButtonHTMLAttributes<HTMLButtonElement>
+// type="button" 기본값, FOCUS_RING, disabled 커서만 가진다. 모양은 호출부 className.
+// 검색 결과 줄, 선택 칩, 다시 보내기 링크처럼 Button 모양이 맞지 않는 버튼에 쓴다.
+```
+
 ### Button
 ```typescript
 type ButtonProps = {
-  variant?: 'primary' | 'secondary' | 'danger' | 'ghost'
-  size?: 'sm' | 'md' | 'lg'
-  loading?: boolean
-  disabled?: boolean
-  children: React.ReactNode
+  variant?: 'primary' | 'secondary' | 'ghost' | 'destructive'
+  size?: 'sm' | 'md' | 'lg'      // h-8, h-10, h-12
+  loading?: boolean              // 스피너 + disabled + aria-busy
+  fullWidth?: boolean
 } & React.ButtonHTMLAttributes<HTMLButtonElement>
+// ButtonBase 위에 가운데 정렬, variant 색, size를 얹는다. hover는 enabled일 때만 바뀐다.
 ```
 
 ### Input
 ```typescript
 type InputProps = {
   label?: string
-  error?: string
   hint?: string
+  error?: string                 // 빨간 테두리, aria-invalid, role="alert" 문구
+  className?: string             // 바깥 상자의 배치(너비, flex). 컨트롤 모양이 아니다
 } & React.InputHTMLAttributes<HTMLInputElement>
 ```
 
-### Modal
+### Select
 ```typescript
-type ModalProps = {
-  isOpen: boolean
-  onClose: () => void
-  title?: string
-  children: React.ReactNode
-}
-// Portal + ESC + backdrop click 종료
+type SelectProps = {
+  className?: string             // 바깥 상자의 배치
+} & React.SelectHTMLAttributes<HTMLSelectElement>
+// 네이티브 <select>. 브라우저 화살표를 끄고(appearance-none) 오른쪽 여백 안에 아이콘을 그린다.
+```
+
+### Textarea
+```typescript
+type TextareaProps = React.TextareaHTMLAttributes<HTMLTextAreaElement>
+// 높이는 rows와 호출부의 min, max가 정한다. className은 요소에 붙는다.
 ```
 
 ### Avatar
 ```typescript
 type AvatarProps = {
-  src?: string | null
-  nickname: string  // initial 표시용
-  size?: 'sm' | 'md' | 'lg'
+  nickname: string               // 첫 글자와, 닉네임으로 정해지는 배경색
+  size?: 'sm' | 'md' | 'lg'      // h-8, h-10, h-12
 }
-// src 없으면 nickname 첫 글자 + 색상 (deterministic by nickname hash)
+// 프로필 이미지는 나중에 넣는다 (next/image에 OAuth 제공자 호스트 설정이 필요하다).
 ```
 
 ### Spinner
 ```typescript
-type SpinnerProps = { size?: 'sm' | 'md' | 'lg' }
-// 회전 애니메이션 lucide-react Loader2 사용
+type SpinnerProps = { size?: number; label?: string; className?: string }
+// role="status". label이 없으면 화면에는 안 보이는 "불러오는 중"을 읽어 준다.
 ```
+
+### Modal
+아직 없다. 초대 UI는 jsdom에 `<dialog>`의 `showModal`이 없어서 헤더 아래 펼침 패널로 만들었다(SESSION_PROGRESS의 Phase 3).
 
 ---
 

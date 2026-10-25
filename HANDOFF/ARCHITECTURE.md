@@ -10,9 +10,10 @@ GeekChat v2 프론트엔드 폴더 구조 + 라이브러리 선택 + 데이터 �
 
 | 항목 | 선택 | Why |
 |---|---|---|
-| 프레임워크 | Next.js 15 App Router | Vercel 일급 지원 + RSC. Pages Router는 maintenance 모드 |
+| 프레임워크 | Next.js 16 App Router | Vercel 일급 지원 + RSC. Pages Router는 maintenance 모드 |
 | 언어 | TypeScript strict | 백엔드 DTO 그대로 타입화. OAuth 토큰 분기 컴파일러가 강제 |
 | 스타일 | TailwindCSS + `dark` class on `<html>` | 다크모드 기본 + 빠른 스캐폴딩 |
+| 클래스 병합 | `cn()` = tailwind-merge 3.x (`src/lib/cn.ts`) | Tailwind는 같은 속성의 유틸리티를 이름 순으로 내보내서, 이어 붙이기만 하면 호출한 쪽 `className`이 variant에 질 수 있다. 결정 기록은 SESSION_PROGRESS 2026-10-26 |
 | 폼 | react-hook-form + zod + @hookform/resolvers | RHF는 상태, zod 스키마는 API DTO 파싱에 재사용 |
 | 상태 | Zustand (slice 파일 분할) | Provider 트리 없음. 슬라이스로 리렌더 격리 |
 | 데이터 페칭 | SWR | 채팅은 WS 주도. SWR은 방 목록/me/검색만. TanStack Query는 과함 |
@@ -35,7 +36,7 @@ geek-chat-web-v2/
 ├── .env.example             # 커밋, 키만
 ├── .gitignore               # next-app 기본 + .env.local
 ├── next.config.ts
-├── tailwind.config.ts       # darkMode: 'class'
+├── eslint.config.mjs        # flat config. 날 버튼과 폼 요소는 src/components/ui 밖에서 금지 (RULES.md R7)
 ├── tsconfig.json            # strict: true, "@/*" → "./src/*"
 ├── postcss.config.mjs
 ├── package.json
@@ -46,6 +47,7 @@ geek-chat-web-v2/
     │   ├── layout.tsx                   # html.dark, <Toaster/>, <AppBoot/>
     │   ├── globals.css                  # tailwind directives + base
     │   ├── page.tsx                     # 랜딩 = 가입 폼 + OAuth 버튼
+    │   ├── dev/ui/page.tsx              # 공용 컴포넌트 갤러리 (개발 모드만, 운영은 404)
     │   ├── (public)/
     │   │   ├── login/page.tsx
     │   │   ├── signup/page.tsx
@@ -83,10 +85,13 @@ geek-chat-web-v2/
     │   │   ├── CreateRoomForm.tsx       # 검색, 선택, DIRECT 또는 GROUP 생성
     │   │   ├── InvitePanel.tsx          # 그룹 방 헤더의 초대 링크 만들기와 복사
     │   │   └── JoinInvite.tsx           # 초대 참여, 오류 문구(404, 409, 410, 400)
-    │   └── ui/
-    │       ├── Button.tsx
-    │       ├── Input.tsx
-    │       ├── Modal.tsx
+    │   └── ui/                          # 버튼과 폼 요소는 여기서만 (lint, RULES.md R7)
+    │       ├── control.ts               # FOCUS_RING, CONTROL(폼 요소 공통 모양), CONTROL_HEIGHT
+    │       ├── ButtonBase.tsx           # type="button" 기본값, focus ring, disabled 커서만 (모양 없음)
+    │       ├── Button.tsx               # ButtonBase + variant, size
+    │       ├── Input.tsx                # label, hint, error. className은 바깥 상자
+    │       ├── Select.tsx               # 네이티브 select + 아이콘. className은 바깥 상자
+    │       ├── Textarea.tsx
     │       ├── Avatar.tsx
     │       └── Spinner.tsx
     ├── lib/
@@ -107,6 +112,7 @@ geek-chat-web-v2/
     │   │   ├── jwt.ts                   # decode payload (만료 사전 체크)
     │   │   ├── oauthCallback.ts         # window.location.hash 파싱
     │   │   └── returnPath.ts            # 로그아웃 상태로 연 초대 링크로 로그인 뒤 돌아오기 (10분, 한 번)
+    │   ├── cn.ts                        # 클래스 합치기 (tailwind-merge, 뒤에 온 같은 속성이 이김)
     │   ├── env.ts                       # NEXT_PUBLIC_* 검증
     │   ├── time.ts                      # 남은 시간 문구 (formatLeft, formatClock)
     │   └── uuid.ts                      # crypto.randomUUID() wrapper

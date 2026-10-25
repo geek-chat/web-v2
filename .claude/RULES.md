@@ -113,6 +113,9 @@ The server closes with `1008` (POLICY_VIOLATION) for five different causes (serv
 - zod schemas live in `src/lib/api/<domain>.ts` next to the function (request + response both validated).
 - DTO types match backend exactly — no client-side renaming.
 - File-per-component for top-level UI. Sub-components stay in same file if <50 lines.
+- Buttons and form controls come from `src/components/ui/` only. `eslint.config.mjs` (`no-restricted-syntax`) errors on a raw `<button>`, `<input>`, `<select>` or `<textarea>` anywhere else under `src/` (test files excepted). A shape Button's variants don't fit (a list row, a chip, an inline link) uses `ButtonBase` with its own classes; a new kind of control goes into `ui/` first.
+- Primitives merge classes with `cn()` (`src/lib/cn.ts`, tailwind-merge), so a caller's class that sets the same property replaces the variant's. Don't use the `!` modifier to beat a variant. On `Input` and `Select`, `className` sets the layout of the outer box (width, flex), not the control's look; on `Button`, `ButtonBase` and `Textarea` it goes on the element.
+- Single-line controls (`Input`, `Select`) are `h-10`, level with a md `Button`; keep a row of them at md. See every primitive at `/dev/ui` (`npm run dev`; production answers 404).
 
 ## R8. Naver/Korean specifics
 

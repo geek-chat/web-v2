@@ -1,10 +1,12 @@
-# Session Progress — last updated 2026-10-25
+# Session Progress — last updated 2026-10-26
 
 > **다음 세션 진입자에게**: 이 파일이 첫 진입점입니다. 5분 안에 컨텍스트를 잡고 이어 작업하세요.
 
 ---
 
 ## Current state (one-liner)
+
+**디자인 시스템 완료 (2026-10-26)**: 드롭다운 칸이 입력칸과 어긋난 일을 계기로, 버튼과 폼 요소를 `src/components/ui/`의 공용 컴포넌트로만 쓰게 만들었다(사용자 선택: "자체 공용 컴포넌트 + lint 가드, 단계별"). 네 단계를 모두 커밋했고, 이제 그 밖에서 날 `<button>`, `<input>`, `<select>`, `<textarea>`를 쓰면 lint가 막는다(RULES.md R7). push는 운영 배포로 이어지므로 늘 사용자 승인을 받고 한다(`git log origin/main..HEAD`가 비어 있지 않으면 올리지 않은 커밋이 있다).
 
 **Phase 3 완료 (2026-10-25)**: 초대 링크(만들기, 참여 화면, 로그인 뒤 돌아오기), 초대로 들어온 멤버의 이름 갱신, 임시 방과 자동 삭제 메시지의 남은 시간이 들어갔고, 로컬 백엔드로 5명(Alice, Bob, Carol, Dave, Erin) 확인까지 했다. Phase 1(인증)과 Phase 2(WS, 방 목록, 채팅 화면)는 앞서 마쳤다. 다음은 `DEVELOPMENT_PLAN.md`의 "출시 전 체크리스트"다. 사용자가 2026-10-25에 web-v2 재개를 지시해서(선택지 "지금 시작 + Vitest") 10-24부터의 보류를 풀었다. server-v2는 2026-10-25 Render(`https://geek-chat-server-api.onrender.com`)에 올라갔고, 운영 웹(`https://web-lac-one-89.vercel.app`)이 그 백엔드를 쓴다. Render는 이 운영 도메인만 받으므로(localhost Origin은 WS 403) 개발과 두 사용자 확인은 계속 로컬 백엔드로 한다.
 
@@ -26,8 +28,63 @@ Phase 1 결과: 가입과 로그인, single-flight 토큰 갱신, OAuth 콜백 4
 | @hookform/resolvers | 5.2.2 |
 | sonner | 2.0.7 |
 | lucide-react | 1.14.0 |
+| tailwind-merge | 3.7.0 (2026-10-26 도입, `src/lib/cn.ts`. 지원 범위는 Tailwind v4.0~v4.3) |
 | vitest | 5.0.5 (jsdom 30.1.3, @testing-library/react 16.3.3, @vitejs/plugin-react 6.1.2) |
 | @types/node | 24.19.2 (vitest 5의 peer 요구, 로컬 런타임 Node 24.21에 맞춤) |
+
+---
+
+## 2026-10-26 디자인 시스템
+
+### 왜
+
+`<select>`를 쓰는 곳마다 클래스를 따로 적어서, 드롭다운이 입력칸과 높이, 안쪽 여백, 테두리가 달랐고 브라우저 기본 화살표가 테두리에 붙었다. 사용자가 앞으로 이런 실수를 구조로 막는 방법을 요청했고, 선택지 중 "자체 공용 컴포넌트 + lint 가드, 단계별"을 골랐다. Storybook과 스크린샷 비교는 다음 층으로 미뤘다.
+
+### 단계
+
+| 단계 | 내용 | 상태 |
+|---|---|---|
+| 1 | 새 의존성 없이 `ui/Select`, `ui/Textarea`와 공통 모양(`ui/control.ts`의 `CONTROL`, `CONTROL_HEIGHT`)을 만들고, 드롭다운 2곳(`MessageInput`, `CreateRoomForm`)과 메시지 입력칸을 바꾼다 | ✅ `92cf89e` |
+| 2 | tailwind-merge 하나만 들여 `cn()`(`src/lib/cn.ts`)을 만들고 공용 컴포넌트 4개(Button, Input, Select, Textarea)에 쓴다. 테마 토큰이 합쳐지는 결과를 단위 테스트로 고정하고 네이버 버튼의 `!`를 뺀다 | ✅ `150e5b4` |
+| 3 | 남은 날 요소 4곳을 공용 컴포넌트로 바꾼다. Button 모양이 안 맞는 검색 결과 줄, 선택 칩, 다시 보내기 링크는 새 `ui/ButtonBase`(모양 없이 `type="button"` 기본값, focus ring, disabled 커서만)로, `InvitePanel`의 주소 칸은 `Input`으로 옮긴다(Input의 `className`이 Select처럼 바깥 상자를 가리키게 바꾸고, 그 줄은 md 높이). 개발 모드 전용 갤러리 `/dev/ui`를 만든다(운영은 `notFound()`) | ✅ `a203b66`, `3b1617f`, `b661f98` |
+| 4 | ESLint `no-restricted-syntax`로 `src/components/ui/**` 밖(테스트 제외)의 `button`, `input`, `select`, `textarea` JSX를 막는다. RULES R7, `COMPONENTS.md` §3, ARCHITECTURE 폴더 구조를 고친다 | ✅ `f7357a6` |
+
+### 커밋
+
+| 커밋 | 내용 |
+|---|---|
+| `552dd87` | 에러 문구 두 가지. 초대 참여의 400은 "Room is full"일 때만 정원 초과이고, 나머지(S18 전에 1:1 방에서 만든 링크)는 쓸 수 없는 링크로 본다. 가입 400은 도메인의 WeakPassword와 필드 검사(`password: …`, S10 뒤 형식)를 모두 비밀번호 문구로 보인다 |
+| `92cf89e` | 1단계 |
+| `150e5b4` | 2단계. 공용 컴포넌트 4개가 `cn()`으로 클래스를 합치고, 네이버 버튼의 `!`를 뺐다(secondary의 hover 테두리도 `enabled:hover:border-transparent`로 지운다) |
+| `a203b66` | 3단계. `ui/ButtonBase`와 `control.ts`의 `FOCUS_RING`. Button이 ButtonBase 위에 서고, 검색 결과 줄, 선택 칩, 다시 보내기가 원래 클래스 그대로 ButtonBase를 쓴다(다시 보내기만 `rounded-sm` 추가) |
+| `3b1617f` | 3단계. Input의 `className`이 바깥 상자를 가리킨다(전에 넘기던 호출부는 0곳, `src`의 tsx를 TypeScript 파서로 훑어 확인). 초대 패널의 주소 칸이 Input이 되고 복사 버튼과 md 높이로 맞춘다 |
+| `b661f98` | 3단계. `/dev/ui` 갤러리 |
+| `f7357a6` | 4단계. lint 가드 |
+
+2단계 검증: `memguard -- npm test`(49개 파일, 299개 테스트), tsc, lint, build 모두 exit 0. 개발 서버 `/signup`에서 계산된 색을 쟀다. 네이버는 쉴 때 `#03c75a`, hover `#02a94c`, 테두리는 둘 다 투명, 글자 흰색. Google은 `#18181b`, hover `#27272a`에 회색 반투명 테두리. primary는 `#818cf8`, hover `#a5b4fc`. 페이지에 `!` 클래스는 없고 CSP 오류도 없었다.
+
+3, 4단계 검증: `memguard -- npm test`(52개 파일, 304개 테스트), tsc, lint, build 모두 exit 0. ButtonBase 테스트는 `type` 기본값을 빼면 폼이 제출되어 실패하는 것을 확인했다. lint 가드는 네 요소를 하나씩 넣은 임시 파일에서 오류 4건, 테스트 파일의 날 `<button>`에서 0건이었고, 두 파일은 지웠다. 운영 빌드(`npm run start`)에서 `/dev/ui`는 404, `/login`은 200. 개발 서버의 `/dev/ui`에서 한 줄에 놓인 Select, Input, md Button이 모두 40px로 위아래가 맞았다. 로컬 server-v2(`07372dd`)로 앱 화면도 쟀다. 초대 패널의 주소 칸과 복사 버튼은 둘 다 40px로 같은 줄, 검색 결과 줄은 48px에 왼쪽 정렬과 굵기 400 그대로, 선택 칩은 28px 둥근 모양 그대로, 다시 보내기는 16px 높이에 12px 빨간 밑줄 글자였다. 키보드 focus ring은 클래스만 확인했고 눈으로는 보지 않았다.
+
+### 결정 기록: tailwind-merge (env-intake)
+
+- 날짜: 2026-10-26
+- 무엇: tailwind-merge 3.7.0, 들이기
+- 왜: Tailwind는 같은 속성의 유틸리티를 클래스 순서가 아니라 이름 순으로 내보낸다. 공용 컴포넌트가 variant 클래스 뒤에 호출한 쪽 `className`을 이어 붙이기만 하면 호출한 쪽이 질 수 있다(네이버 버튼이 secondary의 회색으로 보여서 `!`로 막아 두었다). 버린 대안: `!` 유지(덮을 때마다 기억해야 한다), variant에서 색을 빼고 호출부가 모두 적기(같은 실수가 돌아온다), 직접 만든 병합 함수(토큰 분류를 새로 짜야 한다)
+- 선언: `package.json`의 `"tailwind-merge": "^3.7.0"`, 층은 프로젝트. lock에는 이 패키지 하나만 더해졌다
+- 감시: `src/lib/cn.test.ts`가 이 테마 토큰의 병합 결과를 고정하고, `src/components/auth/OAuthButtons.test.tsx`가 네이버 버튼에 variant 색이 남지 않는지 본다. 둘 다 `cn`을 그냥 이어 붙이기로 바꾸면 실패하는 것을 확인했다. CI는 없어서 `npm test`가 유일한 감시다
+- 지원 범위: tailwind-merge 3.x는 Tailwind v4.0~v4.3을 지원한다(패키지 README). Tailwind를 그 너머로 올리기 전에 다시 확인한다
+- 되돌리기: `npm uninstall tailwind-merge`와 2단계 커밋 revert(네이버 버튼의 `!`도 함께 돌아온다)
+
+### server-v2 세션이 예고한 계약 (머지 전)
+
+| 항목 | 예고 | 머지되면 web-v2가 할 일 |
+|---|---|---|
+| S11 | `message_expired`, `room_expired`를 커밋 뒤에 보낸다 | 없음. tombstone은 그대로 둔다 |
+| S12 | `MessageResponse.clientMessageId` | REST 행과 failed 행을 `clientMessageId`로 한 행으로 맞춘다 |
+| S13 | 연결을 받으면 `{type:"connected", data:{userId, roomIds}}` | `connected`를 수락 신호로 쓴다(`lib/ws/events.ts`에 추가). 지금은 모르는 type을 버리고 1초 창으로 수락을 추정한다 |
+| S14 | 탈퇴하면 서버가 그 사용자의 소켓을 닫는다. heartbeat는 미정 | 닫힐 때의 코드와 `error.code`를 확인해 R2 표에 넣는다 |
+| S15 | `RoomMemberResponse.lastReadAt` (문자열 또는 null) | 방을 열 때 읽음 표시를 이 값으로 시작한다 |
+| S19 | server-v2 PR #18 (동시 참여) | 없음 예상. 오류 응답이 바뀌면 `describeApiError`의 `invite` 맥락을 확인한다 |
 
 ---
 
@@ -360,7 +417,7 @@ LOW-2 수정 후보 (미실측): 지금처럼 즉시 지운 뒤 `queueMicrotask`
 | S5 | server-v2 `render.yaml`, `AppProperties.frontendOriginPatterns` | Render에서는 REST CORS도 `FRONTEND_URL` 하나만 허용한다 (패턴 기본값이 빈 목록). preview 배포는 REST도 실패한다 |
 | S6 | server-v2 `SpringDataMessageRepository.findByRoomIdAfter` | 메시지 cursor 페이징에 id 보조 정렬이 없어서, 같은 `createdAt`을 가진 메시지가 페이지 경계에서 빠질 수 있다 (가능성 낮음) |
 | S8, S9 | server-v2 인증 | 보안 항목 2건. 2026-10-25에 사용자에게 직접 보고했다. 이 저장소는 공개라서 고쳐질 때까지 상세는 적지 않는다. **운영 배포 전 처리 권장** |
-| S16 | server-v2 | 보안 항목 1건. 2026-10-25에 사용자에게 직접 보고했다. 같은 이유로 상세는 적지 않는다. **운영 배포 전 처리 권장** |
+| S16 | server-v2 | 보안 항목 1건. 2026-10-25에 사용자에게 직접 보고했다. 같은 이유로 상세는 적지 않는다. server-v2#16(`185fad0`)으로 고쳐져 2026-10-25 15:18Z 운영에 배포됐다 |
 | S10 | server-v2 `SecurityConfig.securityFilterChain` | `/error`가 허용 목록에 없고 entry point가 본문 없는 401을 돌려준다. 그래서 공개 엔드포인트의 bean validation 실패(400)가 401로 바뀌어 보일 수 있다 (설정 기준, 실측 전). web-v2는 서버와 같은 검증을 폼에서 먼저 해서 영향이 작다. 2026-10-25 운영에서 실측(`GET /auth/login`이 405 대신 401). server-v2#14로 고쳐 운영에 배포됐다(2026-10-25, `GET /auth/login`이 405). 이제 400, 404, 405는 `{statusCode, message, error}`, 500과 403은 Spring 기본 본문으로 나온다. web-v2는 바꿀 것이 없음을 코드로 확인했다(`readErrorBody`가 계약 밖 본문을 버림) |
 | S11 | server-v2 `ChatEventListener.onMessageExpired`, `MessageExpirationScheduler` | 스케줄러가 `@Transactional` 안에서 이벤트를 내고 리스너는 `@Async @EventListener`라서, `message_expired`가 삭제 커밋보다 먼저 나갈 수 있다. 그 사이 REST가 지운 메시지를 돌려준다. web-v2는 tombstone으로 막았다. `AFTER_COMMIT`으로 바꾸면 근본 해결 |
 | S12 | server-v2 `MessageResponse` (`MessageDto.kt`) | `clientMessageId`가 없어서 ack를 잃은 메시지를 REST 행과 맞출 수 없다. failed 행과 서버 행이 함께 보인다 |
@@ -368,8 +425,8 @@ LOW-2 수정 후보 (미실측): 지금처럼 즉시 지운 뒤 `queueMicrotask`
 | S14 | server-v2 websocket 모듈 | 로그아웃과 탈퇴 때 그 사용자의 소켓을 닫지 않는다(닫는 곳은 `reject` 하나). heartbeat 설정도 없어서 끊긴 연결이 열린 것처럼 남을 수 있다. 배포 환경 프록시의 idle timeout도 확인이 필요하다 |
 | S15 | server-v2 `RoomMemberResponse`, 방 목록 API | 멤버의 읽음 시각(`lastReadAt`)을 주는 REST가 없다. 새로 연 화면은 접속 뒤 `read_update`가 올 때까지 읽음 표시를 그릴 수 없다 |
 | S17 | server-v2 `AuthController.googleStart` | `scope`에 공백이 든 `"openid email profile"`을 넣고 `.build(true)`로 만들어서 `IllegalArgumentException`이 난다. `/error`가 막혀 있어서(S10) 응답은 본문 없는 401이다. 2026-10-25 Render에서 `/auth/google`은 401, `/auth/naver`는 302였고, Spring 7.0.9 jshell로 예외를 재현했다. `.encode().build()`로 바꾸면 생성된다. 이 경로의 테스트가 없다. server-v2#15로 고쳐 운영에 배포됐다. 2026-10-25 13:13Z 뒤로 `/auth/google`이 302로 `accounts.google.com`에 보낸다(client_id 있음, redirect_uri는 Render 콜백, scope 인코딩됨). 그 전 몇 분은 #14만 떠 있어서 같은 예외가 500 Whitelabel 페이지로 보였다. Google 로그인 끝까지는 사용자가 확인한다 |
-| S18 | server-v2 `InviteLinkService` | 초대 링크가 GROUP 방으로 제한되지 않는다. 링크는 그 방 멤버만 만들 수 있지만, 1:1 방 멤버가 만들면 세 번째 사람이 그 1:1 방에 들어올 수 있다. web-v2는 그룹 방에서만 초대 UI를 띄운다. server-v2 세션이 작업 중(브랜치 `fix/invite-group-only`) |
-| S19 | server-v2 `InviteLinkService.joinByInviteCode` | 확인한 뒤 넣는 방식이라 락이 없어서, 동시에 참여하면 `maxUses`나 정원을 넘을 수 있다(낮음) |
+| S18 | server-v2 `InviteLinkService` | 초대 링크가 GROUP 방으로 제한되지 않는다. 링크는 그 방 멤버만 만들 수 있지만, 1:1 방 멤버가 만들면 세 번째 사람이 그 1:1 방에 들어올 수 있다. web-v2는 그룹 방에서만 초대 UI를 띄운다. server-v2#17(`d623483`)로 고쳐져 2026-10-25 15:24Z 운영에 배포됐다. 이제 1:1 방에서 만들면 400 "Invite links are only available for group rooms"이고, 그 전에 만든 1:1 방 링크로 참여하면 web-v2는 쓸 수 없는 링크로 안내한다(`552dd87`) |
+| S19 | server-v2 `InviteLinkService.joinByInviteCode` | 확인한 뒤 넣는 방식이라 락이 없어서, 동시에 참여하면 `maxUses`나 정원을 넘을 수 있다(낮음). server-v2 PR #18에서 작업 중(2026-10-26 기준 머지 전) |
 | S7 | server-v2 `ChatErrorMapping.kt` | 에러 본문의 `error`가 HTTP reason phrase라서 같은 상태 코드를 쓰는 도메인 에러(예: 가입 409의 유저네임과 이메일)를 구분하려면 영어 메시지 앞부분을 봐야 한다. 안정적인 `code` 필드가 있으면 클라이언트가 메시지 문구에 기대지 않아도 된다 |
 | T1 | `geek-chat-web` main `559d170` | v2가 리다이렉트하는 `/auth/oauth-link`, `/auth/oauth-complete`, `/auth/error` 라우트 파일이 없음. v1 연동은 `/auth/success#linking_required=true` 형식 (`app/auth/success.tsx:18-33`). web-internal 세션에 공유함. 10-25 기준 v1 `feat/v2-transport` 브랜치(`76cb0b1`)에서 처리 중이고 아직 머지 전 |
 
@@ -405,11 +462,15 @@ ea0f041 feat(env): add env validation + strict CSP headers + Turbopack root pin
 
 ## In-flight
 
-없음. Phase 3은 `e4f08a7`, `b08dd2d`, `52b28cd`와 문서 커밋으로 끝났다.
+없음. 디자인 시스템 네 단계는 `92cf89e`부터 `f7357a6`까지와 그 문서 커밋으로 끝났다. 이 묶음은 `5421b36` 뒤의 `552dd87`, `92cf89e`, `150e5b4`, `a203b66`, `3b1617f`, `b661f98`, `f7357a6`과 문서 커밋이다. 올라갔는지는 `git log origin/main..HEAD`로 본다(비어 있으면 올라간 것).
+
+Phase 3은 `e4f08a7`, `b08dd2d`, `52b28cd`와 문서 커밋으로 끝났다.
 
 ---
 
 ## Next session — start here
+
+> 지금 할 일: `git log origin/main..HEAD`가 비어 있지 않으면 push 승인부터 받는다 → 아래 3번(남은 확인과 출시 전 체크리스트). server-v2 세션이 S12~S15 머지를 알려 오면 위 "server-v2 세션이 예고한 계약" 표대로 반영한다. 새 화면에 버튼이나 폼 요소가 필요하면 `src/components/ui/`부터 본다(RULES.md R7, `/dev/ui`).
 
 ### 0. 환경 복구 (5분)
 
@@ -521,8 +582,8 @@ R2의 1008 분기는 바뀌지 않는다. PR #11에서도 close는 `reject`의 `
 | `style-src 'unsafe-inline'` | ✅ 유지로 정리 (2026-10-25, 위 "배포 후 발견") |
 | CSP가 hydration을 막음 | ✅ nonce + `src/proxy.ts`로 고침 (사용자 선택, 위 "배포 후 발견") |
 | 리뷰 MEDIUM: 콜백 링크 출처 확인 | ✅ web-v2 쪽은 `d0a9116` (사용자가 "둘 다" 선택). 서버 쪽 보완은 사용자가 따로 처리 |
-| S8, S9, S16 서버 보안 항목 | 사용자가 처리 담당을 정함. 운영 배포 전 처리 권장 |
-| S18 그룹 전용 초대 | server-v2 세션 작업 중. 배포돼도 web-v2는 바꿀 것이 없다(이미 그룹 방에서만 초대) |
+| S8, S9 서버 보안 항목 | 사용자가 처리 담당을 정함. 운영 배포 전 처리 권장. S16은 2026-10-25에 고쳐져 배포됨 |
+| S18 그룹 전용 초대 | ✅ server-v2#17 운영 배포(2026-10-25 15:24Z). web-v2는 `552dd87`에서 참여 400 문구만 맞췄다 |
 | 리뷰 LOW-2: Next canonical URL에 hash 잔류 | 남김. 위 "코드 리뷰" 절의 수정 후보를 dev에서 실측한 뒤 적용 |
 | Phase 2.1 실측 | ✅ 2.2와 2.3 확인 때 함께 했다 (WS 연결 1개, 다른 사용자의 `new_message` 수신, 서버 재시작 뒤 재연결과 backfill). `MAX_CONNECTIONS` 토스트는 아직 브라우저로 보지 않았다 |
 | 다른 탭의 로그아웃과 계정 전환 | ✅ `df2f4f0`. 리뷰 HIGH로 올라와서 고쳤다. 다른 탭이 로그아웃하면 이 탭도 로그아웃되고, 다른 계정으로 로그인하면 이 탭도 그 계정으로 바뀐다 |
@@ -546,6 +607,7 @@ R2의 1008 분기는 바뀌지 않는다. PR #11에서도 close는 `reject`의 `
 - **OAuth 흐름 표시**: 버튼을 누를 때 sessionStorage에 10분짜리 표시를 남기고, 콜백은 그 표시가 있을 때만 hash를 쓴 뒤 표시를 지운다 (`src/lib/auth/oauthFlow.ts`). 다른 탭으로 돌아오는 OAuth 흐름은 거절되는데, 이건 감수하기로 한 트레이드오프다.
 - **CSP**: 엄격. `script-src 'self'` (no inline/eval), `connect-src` 환경변수만, `frame-ancestors 'none'`.
 - **localStorage 토큰 + CSP** 조합으로 XSS 표면 최소화 (RULES.md R5).
+- **공용 컴포넌트**: 버튼과 폼 요소는 `src/components/ui/`에서만 쓴다. lint(`no-restricted-syntax`)가 그 밖의 날 요소를 막고, 클래스는 `cn()`(tailwind-merge)으로 합친다. 정본은 RULES.md R7, 목록은 COMPONENTS.md §3, 눈으로 볼 곳은 `/dev/ui`.
 
 ### 백엔드 (참고만, 수정 절대 금지)
 
@@ -577,4 +639,4 @@ R2의 1008 분기는 바뀌지 않는다. PR #11에서도 close는 `reject`의 `
 
 ## 한 줄 요약
 
-> **web-v2는 Phase 1(인증), Phase 2(WS, 방 목록, 채팅 화면), Phase 3(초대, 임시 방, 자동 삭제)를 마쳤고 다음은 출시 전 체크리스트다. 운영은 Vercel `web` 프로젝트이고 Render의 server-v2를 쓴다. 환경 복구 → 기준선 확인 → 로컬 백엔드(위 "로컬 백엔드 띄우는 법") → 남은 확인(위 "다음 세션" 3번) → 출시 전 체크리스트 순서로 진행한다. 끝날 때 refresh-context 스킬 호출 필수.**
+> **web-v2는 Phase 1(인증), Phase 2(WS, 방 목록, 채팅 화면), Phase 3(초대, 임시 방, 자동 삭제)를 마쳤고, 디자인 시스템(공용 컴포넌트와 lint 가드, 2026-10-26)도 마쳤다. 다음은 출시 전 체크리스트다. 운영은 Vercel `web` 프로젝트이고 Render의 server-v2를 쓴다. 환경 복구 → 기준선 확인 → 로컬 백엔드(위 "로컬 백엔드 띄우는 법") → 남은 확인(위 "다음 세션" 3번) → 출시 전 체크리스트 순서로 진행한다. 끝날 때 refresh-context 스킬 호출 필수.**
