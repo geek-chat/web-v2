@@ -8,8 +8,14 @@
  * mount → unmount → mount in development keeps one socket rather than opening
  * a second one inside the server's 2s reconnect limit. Closing also empties
  * the chat stores, so the next user of this tab starts clean.
+ *
+ * A client belongs to one user. If the stored token turns out to be another
+ * account's (another tab logged in as someone else), the client closes and the
+ * session is verified again; the new user then gets a new client.
  */
 import { uuid } from "@/lib/uuid";
+import { hasTokens } from "@/lib/auth/storage";
+import { verifySession } from "@/lib/auth/session";
 import { ChatWSClient } from "@/lib/ws/client";
 import { backfillLoadedRooms } from "@/lib/chat/backfill";
 import { findByClientMessageId, useMessagesStore } from "@/store/messages";
@@ -42,17 +48,21 @@ let holders = 0;
 let releaseTimer: ReturnType<typeof setTimeout> | undefined;
 let unbind: (() => void) | null = null;
 let ui: ChatUi = { notify: () => {} };
+let clientUserId: string | undefined;
 const ackTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
-export function acquireChat(nextUi: ChatUi): void {
+/** `userId` pins the client to that account (see ChatWSClient's `userId` option). */
+export function acquireChat(nextUi: ChatUi, userId?: string): void {
   holders += 1;
   ui = nextUi;
   clearTimeout(releaseTimer);
   releaseTimer = undefined;
   const current = useWsStore.getState().client;
-  if (current && current.getStatus() !== "closed") return;
-  if (current) shutdown(); // it closed itself when its session ended
-  const client = new ChatWSClient();
+  if (current && current.getStatus() !== "closed" && clientUserId === userId) return;
+  // It closed itself (session ended, or another account's token), or the user changed.
+  if (current) shutdown();
+  clientUserId = userId;
+  const client = new ChatWSClient({ userId });
   unbind = bindEvents(client);
   useWsStore.getState().setClient(client);
   client.start();
@@ -128,9 +138,12 @@ function bindEvents(client: ChatWSClient): () => void {
       ws().setStatus(status);
       if (status === "open") void backfillLoadedRooms();
       if (status === "blocked") ui.notify({ kind: "tooManyConnections" });
+      // Closed with tokens still stored: they belong to another account now.
+      // Re-reading the session switches the screens (and this connection) to it.
+      if (status === "closed" && hasTokens()) void verifySession();
     }),
     client.on("new_message", (message) => {
-      messages().mergeServerMessages(message.roomId, [message]);
+      messages().addLiveMessage(message.roomId, message);
       rooms().touchRoom(message.roomId, message.createdAt);
     }),
     client.on("message_ack", ({ clientMessageId, serverId }) => {
@@ -169,6 +182,7 @@ function bindEvents(client: ChatWSClient): () => void {
 function shutdown(): void {
   unbind?.();
   unbind = null;
+  clientUserId = undefined;
   useWsStore.getState().client?.close();
   ackTimers.forEach((timer) => clearTimeout(timer));
   ackTimers.clear();

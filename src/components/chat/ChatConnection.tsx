@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { acquireChat, releaseChat, retryChat, type ChatNotice } from "@/lib/chat/connection";
+import { useAuthStore } from "@/store/auth";
 import { toEpochMs } from "@/store/messages";
 import { useRoomsStore } from "@/store/rooms";
 import { t } from "@/i18n";
@@ -11,24 +12,30 @@ import { t } from "@/i18n";
 /**
  * Keeps the app's WebSocket open while an authenticated screen is shown. The
  * (authed) layout renders it inside AuthGuard, so a logout unmounts it and
- * closes the connection. Turns connection notices into toasts. Renders nothing.
+ * closes the connection. The connection is pinned to the signed-in user and
+ * starts over when that user changes. Turns connection notices into toasts.
+ * Renders nothing.
  */
 export function ChatConnection() {
   const router = useRouter();
+  const userId = useAuthStore((s) => s.user?.id);
 
   useEffect(() => {
-    acquireChat({
-      notify: (notice) => {
-        if (notice.kind === "roomExpired") {
-          // R2: only the room on screen gets a toast and a way out.
-          if (useRoomsStore.getState().currentRoomId !== notice.roomId) return;
-          router.replace("/rooms");
-        }
-        showNotice(notice);
+    acquireChat(
+      {
+        notify: (notice) => {
+          if (notice.kind === "roomExpired") {
+            // R2: only the room on screen gets a toast and a way out.
+            if (useRoomsStore.getState().currentRoomId !== notice.roomId) return;
+            router.replace("/rooms");
+          }
+          showNotice(notice);
+        },
       },
-    });
+      userId,
+    );
     return () => releaseChat();
-  }, [router]);
+  }, [router, userId]);
 
   return null;
 }

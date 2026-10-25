@@ -46,3 +46,8 @@ export function clearTokens(): void {
 export function hasTokens(): boolean {
   return getAccessToken() !== null && getRefreshToken() !== null;
 }
+
+/** True when a `storage` event from another tab may have changed the session: a token key, or clear() (null key). */
+export function isTokenStorageKey(key: string | null): boolean {
+  return key === null || key === ACCESS_KEY || key === REFRESH_KEY;
+}

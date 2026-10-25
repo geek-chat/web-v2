@@ -106,3 +106,69 @@ describe("backfill", () => {
     expect(ids("r2")).toEqual(["m2", "m3"]);
   });
 });
+
+describe("backfill: which rooms count as loaded", () => {
+  beforeEach(async () => {
+    list.mockReset();
+    store().reset();
+    const { useWsStore } = await import("@/store/ws");
+    useWsStore.getState().reset();
+  });
+
+  it("takes the latest page for a loaded room that has no server rows", async () => {
+    store().mergeServerMessages("r1", []); // an empty room the view opened
+    list.mockResolvedValueOnce([dto("m1", 1)]);
+
+    await backfillRoom("r1");
+
+    expect(list).toHaveBeenCalledWith("r1", { limit: MESSAGE_PAGE_MAX });
+    expect(ids("r1")).toEqual(["m1"]);
+  });
+
+  it("skips rooms that only received live messages", async () => {
+    store().addLiveMessage("r2", dto("m1", 1));
+
+    await backfillLoadedRooms();
+
+    expect(list).not.toHaveBeenCalled();
+  });
+
+  it("backfills a first page that lands after the connection was accepted", async () => {
+    const { useWsStore } = await import("@/store/ws");
+    const { loadRoomMessages } = await import("./backfill");
+    useWsStore.getState().setStatus("open");
+    list.mockResolvedValueOnce([dto("m2", 2), dto("m1", 1)]).mockResolvedValueOnce([dto("m3", 3)]);
+
+    await loadRoomMessages("r1");
+
+    expect(list).toHaveBeenNthCalledWith(1, "r1", { limit: MESSAGE_PAGE_MAX });
+    expect(list).toHaveBeenNthCalledWith(2, "r1", {
+      direction: "forward",
+      cursor: "2026-10-25T05:00:02.123456Z",
+      limit: MESSAGE_PAGE_MAX,
+    });
+    expect(ids("r1")).toEqual(["m1", "m2", "m3"]);
+  });
+
+  it("leaves the backfill to the acceptance when the socket is not open yet", async () => {
+    const { loadRoomMessages } = await import("./backfill");
+    list.mockResolvedValueOnce([dto("m1", 1)]);
+
+    await loadRoomMessages("r1");
+
+    expect(list).toHaveBeenCalledTimes(1);
+    expect(store().loaded).toEqual({ r1: true });
+  });
+
+  it("drops a first page that lands after the session ended", async () => {
+    const { loadRoomMessages } = await import("./backfill");
+    list.mockImplementationOnce(async () => {
+      store().reset(); // logout while the page was loading
+      return [dto("m1", 1)];
+    });
+
+    await loadRoomMessages("r1");
+
+    expect(store().byRoom).toEqual({});
+  });
+});

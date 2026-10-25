@@ -18,11 +18,12 @@
  *   through the shared single-flight refreshOnce().
  * - close() disposes the client: timers are cancelled and every continuation
  *   re-checks `disposed`, so nothing opens a socket afterwards. The client
- *   also disposes itself once its session ends.
+ *   also disposes itself once its session ends, or when storage holds another
+ *   account's token (another tab logged in as someone else).
  */
 import { env } from "@/lib/env";
 import { getAccessToken, getRefreshToken, hasTokens } from "@/lib/auth/storage";
-import { isExpiringSoon } from "@/lib/auth/jwt";
+import { decodeJwt, isExpiringSoon } from "@/lib/auth/jwt";
 import { AuthExpiredError, endSession, refreshOnce } from "@/lib/api/client";
 import {
   isConnectRejectionCode,
@@ -55,6 +56,12 @@ export type WSStatus =
 
 type Handler<K extends ServerEventType> = (data: ServerEventMap[K]) => void;
 
+export interface ChatWSClientOptions {
+  url?: string;
+  /** The account this client streams for (the JWT `sub`). Tokens of any other account are never used. */
+  userId?: string;
+}
+
 export class ChatWSClient {
   private socket: WebSocket | null = null;
   private status: WSStatus = "idle";
@@ -71,7 +78,13 @@ export class ChatWSClient {
   private acceptTimer: ReturnType<typeof setTimeout> | undefined;
   private stableTimer: ReturnType<typeof setTimeout> | undefined;
 
-  constructor(private readonly url: string = env.NEXT_PUBLIC_WS_URL) {}
+  private readonly url: string;
+  private readonly userId: string | undefined;
+
+  constructor(options: ChatWSClientOptions = {}) {
+    this.url = options.url ?? env.NEXT_PUBLIC_WS_URL;
+    this.userId = options.userId;
+  }
 
   getStatus(): WSStatus {
     return this.status;
@@ -139,6 +152,7 @@ export class ChatWSClient {
       this.close();
       return;
     }
+    if (this.isForeign(token)) return;
     // Optional in R2: refresh first instead of paying a TOKEN_EXPIRED round trip.
     if (isExpiringSoon(token)) {
       try {
@@ -148,7 +162,7 @@ export class ChatWSClient {
         if (!this.disposed) this.handleRefreshFailure(err, startedWith);
         return;
       }
-      if (this.disposed) return;
+      if (this.disposed || this.isForeign(token)) return;
     }
     this.startedWith = startedWith;
     this.lastRejection = null;
@@ -222,8 +236,19 @@ export class ChatWSClient {
       if (!this.disposed) this.handleRefreshFailure(err, startedWith);
       return;
     }
-    // The server's 2s minimum applies right after a refresh too.
-    if (!this.disposed) this.scheduleReconnect();
+    // R2: reconnect after the minimum interval, not after a backoff grown by earlier drops.
+    if (!this.disposed) this.scheduleReconnect(MIN_RECONNECT_MS);
+  }
+
+  /**
+   * True, after disposing the client, when storage holds another account's
+   * token: another tab logged in as someone else. This tab's stores must never
+   * receive that account's events; the owner re-verifies the session instead.
+   */
+  private isForeign(token: string): boolean {
+    if (this.userId === undefined || decodeJwt(token)?.sub === this.userId) return false;
+    this.close();
+    return true;
   }
 
   private handleRefreshFailure(err: unknown, startedWith: string | null): void {
@@ -248,11 +273,12 @@ export class ChatWSClient {
     this.scheduleReconnect();
   }
 
-  private scheduleReconnect(): void {
+  /** Reconnects after the current backoff, which then doubles, or after `baseMs` when given. */
+  private scheduleReconnect(baseMs?: number): void {
     if (this.disposed) return;
     this.setStatus("reconnecting");
-    const delay = this.reconnectMs + Math.random() * JITTER_MS;
-    this.reconnectMs = Math.min(this.reconnectMs * 2, MAX_RECONNECT_MS);
+    const delay = (baseMs ?? this.reconnectMs) + Math.random() * JITTER_MS;
+    if (baseMs === undefined) this.reconnectMs = Math.min(this.reconnectMs * 2, MAX_RECONNECT_MS);
     clearTimeout(this.retryTimer);
     this.retryTimer = setTimeout(() => {
       this.retryTimer = undefined;

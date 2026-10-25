@@ -172,3 +172,67 @@ describe("toEpochMs", () => {
     expect(toEpochMs("2026-10-25T05:13:25Z")).toBe(Date.UTC(2026, 9, 25, 5, 13, 25));
   });
 });
+
+describe("messages store: loading, tombstones and ordering", () => {
+  beforeEach(() => {
+    store().reset();
+  });
+
+  it("marks a room loaded only through a REST page", () => {
+    store().addLiveMessage(ROOM, server("m1", "2026-10-25T05:00:01Z"));
+    store().addPending({ roomId: ROOM, clientMessageId: "c1", senderId: "u1", content: "hi" });
+    expect(store().loaded).toEqual({});
+
+    store().mergeServerMessages(ROOM, []);
+    expect(store().loaded).toEqual({ [ROOM]: true });
+
+    store().removeRoom(ROOM);
+    expect(store().loaded).toEqual({});
+  });
+
+  it("never merges back a message that expired or burned", () => {
+    store().mergeServerMessages(ROOM, [
+      server("m1", "2026-10-25T05:00:01Z"),
+      server("m2", "2026-10-25T05:00:02Z"),
+    ]);
+    store().removeMessages(ROOM, ["m1", "in-flight"]);
+
+    // A page read before the removal arrives after it, and a stray live copy too.
+    store().mergeServerMessages(ROOM, [
+      server("m1", "2026-10-25T05:00:01Z"),
+      server("in-flight", "2026-10-25T05:00:03Z"),
+    ]);
+    store().addLiveMessage(ROOM, server("m1", "2026-10-25T05:00:01Z"));
+
+    expect(ids()).toEqual(["m2"]);
+  });
+
+  it("keeps rows that arrived live while the latest page loaded", () => {
+    store().mergeServerMessages(ROOM, [server("old", "2026-10-25T05:00:01Z")]);
+    store().addLiveMessage(ROOM, server("live", "2026-10-25T09:00:30Z"));
+
+    store().replaceServerMessages(ROOM, [
+      server("latest2", "2026-10-25T09:00:10Z"),
+      server("latest1", "2026-10-25T09:00:00Z"),
+    ]);
+
+    expect(ids()).toEqual(["latest1", "latest2", "live"]);
+  });
+
+  it("orders rows within one millisecond by their microseconds", () => {
+    store().mergeServerMessages(ROOM, [
+      server("a", "2026-10-25T05:00:25.123900Z"),
+      server("z", "2026-10-25T05:00:25.123100Z"),
+    ]);
+
+    expect(ids()).toEqual(["z", "a"]);
+  });
+
+  it("bumps the epoch on reset", () => {
+    const before = store().epoch;
+
+    store().reset();
+
+    expect(store().epoch).toBe(before + 1);
+  });
+});

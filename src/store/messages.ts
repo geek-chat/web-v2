@@ -14,6 +14,12 @@
  * Order: rows with a server createdAt sort by time, then id. Rows with only a
  * client time (pending, failed, acked but not seen from the server yet) stay
  * at the tail in the order they were added.
+ *
+ * `loaded` marks rooms whose history a REST page brought in; only those are
+ * backfilled. A live new_message alone does not load a room.
+ * Ids removed by message_expired or message_burned stay as tombstones for
+ * the session, so a REST page fetched before the removal cannot bring them
+ * back (the server may send message_expired before its delete commits).
  */
 import { create } from "zustand";
 import type { MessageDto, MessageType } from "@/lib/api/rooms";
@@ -55,10 +61,22 @@ export interface PendingInput {
 
 interface MessagesState {
   byRoom: Record<string, ChatMessage[]>;
+  /** Rooms whose history a REST page loaded. */
+  loaded: Record<string, true>;
+  /** Tombstones: ids removed per room, never merged back. */
+  removed: Record<string, Record<string, true>>;
+  /** Bumped by reset(). A request started before a reset drops its result. */
+  epoch: number;
 
-  /** Adds or updates server rows by id. Also marks the room as loaded, even with no rows. */
+  /** Adds or updates rows from a REST page by id, and marks the room loaded, even with no rows. */
   mergeServerMessages: (roomId: string, messages: readonly ServerMessage[]) => void;
-  /** Drops the room's server rows for `messages` (jump to the latest page); local rows stay. */
+  /** Adds or updates one row from new_message. Does not mark the room loaded. */
+  addLiveMessage: (roomId: string, message: ServerMessage) => void;
+  /**
+   * Jumps to the latest page: drops server rows older than the page, which would
+   * leave a hole before it. Newer rows (they arrived live while it loaded) and
+   * local rows stay.
+   */
   replaceServerMessages: (roomId: string, messages: readonly ServerMessage[]) => void;
   addPending: (input: PendingInput) => void;
   /** failed → pending, for a retry. */
@@ -66,7 +84,7 @@ interface MessagesState {
   ackMessage: (clientMessageId: string, serverId: string) => void;
   /** pending → failed. A sent row stays sent. */
   failMessage: (clientMessageId: string) => void;
-  /** Returns how many rows were removed. */
+  /** Removes rows and keeps their ids as tombstones. Returns how many rows were removed. */
   removeMessages: (roomId: string, ids: readonly string[]) => number;
   removeRoom: (roomId: string) => void;
   reset: () => void;
@@ -77,12 +95,25 @@ export function toEpochMs(iso: string): number {
   return Date.parse(iso.replace(/(\.\d{3})\d+/, "$1"));
 }
 
+/** The fraction of an ISO-8601 instant as nine digits, to order rows within one millisecond. */
+function fractionDigits(iso: string): string {
+  return (/\.(\d+)/.exec(iso)?.[1] ?? "").padEnd(9, "0").slice(0, 9);
+}
+
+function compareStrings(a: string, b: string): number {
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
 function compareRows(a: ChatMessage, b: ChatMessage): number {
   if (a.serverTime !== b.serverTime) return a.serverTime ? -1 : 1;
   if (!a.serverTime) return 0; // stable sort keeps the order they were added
   const byTime = toEpochMs(a.createdAt) - toEpochMs(b.createdAt);
   if (byTime) return byTime;
-  return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+  // Same millisecond: the server keeps microseconds, so compare those before the id.
+  return (
+    compareStrings(fractionDigits(a.createdAt), fractionDigits(b.createdAt)) ||
+    compareStrings(a.id, b.id)
+  );
 }
 
 function toRow(roomId: string, message: ServerMessage, existing?: ChatMessage): ChatMessage {
@@ -108,10 +139,21 @@ function merge(
   list: readonly ChatMessage[],
   roomId: string,
   messages: readonly ServerMessage[],
+  removed: Record<string, true> = {},
 ): ChatMessage[] {
   const rows = new Map(list.map((row) => [row.id, row]));
-  for (const message of messages) rows.set(message.id, toRow(roomId, message, rows.get(message.id)));
+  for (const message of messages) {
+    if (Object.hasOwn(removed, message.id)) continue; // expired or burned: never back
+    rows.set(message.id, toRow(roomId, message, rows.get(message.id)));
+  }
   return [...rows.values()].sort(compareRows);
+}
+
+/** Copies a record without one key. */
+function without<T>(record: Record<string, T>, key: string): Record<string, T> {
+  const rest = { ...record };
+  delete rest[key];
+  return rest;
 }
 
 /** Finds the row this tab sent with `clientMessageId`, in any room. */
@@ -149,16 +191,37 @@ export const useMessagesStore = create<MessagesState>((set, get) => {
 
   return {
     byRoom: {},
+    loaded: {},
+    removed: {},
+    epoch: 0,
 
     mergeServerMessages: (roomId, messages) =>
       set((state) => ({
-        byRoom: { ...state.byRoom, [roomId]: merge(state.byRoom[roomId] ?? [], roomId, messages) },
+        byRoom: {
+          ...state.byRoom,
+          [roomId]: merge(state.byRoom[roomId] ?? [], roomId, messages, state.removed[roomId]),
+        },
+        loaded: { ...state.loaded, [roomId]: true },
+      })),
+
+    addLiveMessage: (roomId, message) =>
+      set((state) => ({
+        byRoom: {
+          ...state.byRoom,
+          [roomId]: merge(state.byRoom[roomId] ?? [], roomId, [message], state.removed[roomId]),
+        },
       })),
 
     replaceServerMessages: (roomId, messages) =>
       set((state) => {
-        const local = (state.byRoom[roomId] ?? []).filter((row) => !row.serverTime);
-        return { byRoom: { ...state.byRoom, [roomId]: merge(local, roomId, messages) } };
+        const oldest = Math.min(...messages.map((m) => toEpochMs(m.createdAt)));
+        const kept = (state.byRoom[roomId] ?? []).filter(
+          (row) => !row.serverTime || toEpochMs(row.createdAt) >= oldest,
+        );
+        return {
+          byRoom: { ...state.byRoom, [roomId]: merge(kept, roomId, messages, state.removed[roomId]) },
+          loaded: { ...state.loaded, [roomId]: true },
+        };
       }),
 
     addPending: ({ roomId, clientMessageId, senderId, content, ttlSeconds }) =>
@@ -213,23 +276,29 @@ export const useMessagesStore = create<MessagesState>((set, get) => {
       ),
 
     removeMessages: (roomId, ids) => {
-      const list = get().byRoom[roomId];
-      if (!list) return 0;
+      const list = get().byRoom[roomId] ?? [];
       const drop = new Set(ids);
       const next = list.filter((row) => !drop.has(row.id));
-      const removed = list.length - next.length;
-      if (removed > 0) set((state) => ({ byRoom: { ...state.byRoom, [roomId]: next } }));
-      return removed;
+      // Tombstone every id, held or not: a page already in flight may still carry it.
+      set((state) => {
+        const tombstones = { ...state.removed[roomId] };
+        for (const id of ids) tombstones[id] = true;
+        const removed = { ...state.removed, [roomId]: tombstones };
+        return next.length === list.length
+          ? { removed }
+          : { removed, byRoom: { ...state.byRoom, [roomId]: next } };
+      });
+      return list.length - next.length;
     },
 
     removeRoom: (roomId) =>
-      set((state) => {
-        if (!Object.hasOwn(state.byRoom, roomId)) return state;
-        const rest = { ...state.byRoom };
-        delete rest[roomId];
-        return { byRoom: rest };
-      }),
+      set((state) => ({
+        byRoom: without(state.byRoom, roomId),
+        loaded: without(state.loaded, roomId),
+        removed: without(state.removed, roomId),
+      })),
 
-    reset: () => set({ byRoom: {} }),
+    reset: () =>
+      set((state) => ({ byRoom: {}, loaded: {}, removed: {}, epoch: state.epoch + 1 })),
   };
 });
