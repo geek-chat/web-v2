@@ -62,7 +62,7 @@ geek-chat-web-v2/
     │       │   ├── new/page.tsx         # 새 대화 (CreateRoomForm)
     │       │   └── [id]/page.tsx        # 채팅 화면 (ChatRoom, 방마다 key로 새로 마운트)
     │       ├── me/page.tsx              # 프로필 + 로그아웃 + 탈퇴
-    │       └── invite/[code]/page.tsx   # 초대 링크 join 처리
+    │       └── invite/[code]/page.tsx   # 초대 참여 화면 (JoinInvite, 눌러야 참여)
     ├── components/
     │   ├── AppBoot.tsx                  # /auth/me 검증, auth:logout, online 재시도, 다른 탭의 로그아웃과 계정 전환 감지 (WS는 ChatConnection)
     │   ├── auth/
@@ -81,7 +81,8 @@ geek-chat-web-v2/
     │   │   ├── RoomList.tsx             # RoomList + RoomsPanel(제목줄)
     │   │   ├── RoomListItem.tsx         # roomTitle, formatActivity
     │   │   ├── CreateRoomForm.tsx       # 검색, 선택, DIRECT 또는 GROUP 생성
-    │   │   └── InviteLinkModal.tsx      # (3.1)
+    │   │   ├── InvitePanel.tsx          # 그룹 방 헤더의 초대 링크 만들기와 복사
+    │   │   └── JoinInvite.tsx           # 초대 참여, 오류 문구(404, 409, 410, 400)
     │   └── ui/
     │       ├── Button.tsx
     │       ├── Input.tsx
@@ -94,7 +95,7 @@ geek-chat-web-v2/
     │   │   ├── auth.ts
     │   │   ├── users.ts
     │   │   ├── rooms.ts
-    │   │   └── invite.ts
+    │   │   └── invite.ts                # 초대 링크 만들기와 참여 (코드 형식 확인)
     │   ├── ws/
     │   │   ├── client.ts                # ChatWSClient: 백오프, 1008 원인별 분기 (RULES.md R2)
     │   │   └── events.ts                # 서버/클라이언트 이벤트 zod 계약
@@ -104,9 +105,10 @@ geek-chat-web-v2/
     │   ├── auth/
     │   │   ├── storage.ts               # localStorage
     │   │   ├── jwt.ts                   # decode payload (만료 사전 체크)
-    │   │   └── oauthCallback.ts         # window.location.hash 파싱
+    │   │   ├── oauthCallback.ts         # window.location.hash 파싱
+    │   │   └── returnPath.ts            # 로그아웃 상태로 연 초대 링크로 로그인 뒤 돌아오기 (10분, 한 번)
     │   ├── env.ts                       # NEXT_PUBLIC_* 검증
-    │   ├── time.ts
+    │   ├── time.ts                      # 남은 시간 문구 (formatLeft, formatClock)
     │   └── uuid.ts                      # crypto.randomUUID() wrapper
     ├── store/
     │   ├── auth.ts                      # status, user (토큰은 lib/auth/storage만)
@@ -118,7 +120,8 @@ geek-chat-web-v2/
     │   ├── useUserSearch.ts             # 300ms debounce, 키에 사용자 id
     │   ├── useRoomMessages.ts           # 첫 페이지 + 이전 페이지 (lib/chat/backfill)
     │   ├── useMarkRead.ts               # mark_read: 500ms 뒤, 보이는 화면에서만 (R6)
-    │   └── useTyping.ts                 # typing_start 2초 간격, 표시 3초
+    │   ├── useTyping.ts                 # typing_start 2초 간격, 표시 3초
+    │   └── useNow.ts                    # 카운트다운마다 자기 타이머 (useSyncExternalStore)
     ├── test/
     │   ├── fakeWebSocket.ts             # 테스트용 WebSocket 대역
     │   └── fakeChatClient.ts            # ChatWSClient 대역 (send, on, emit)
@@ -146,7 +149,7 @@ geek-chat-web-v2/
     → ws://...?token= 으로 연결 (토큰은 시도마다 storage에서 읽음)
     → 서버가 받아들이면 (onopen 1초 뒤 거부 없음, 또는 error가 아닌 첫 프레임) status "open" → backfill
     → onmessage → 이벤트별 스토어 갱신
-      - new_message → store/messages.ts 병합, store/rooms.ts lastMessageAt (모르는 방이면 stale)
+      - new_message → store/messages.ts 병합, store/rooms.ts lastMessageAt (모르는 방이면 stale, 방이 모르는 보낸 사람이면 방과 사람마다 한 번 stale)
       - message_ack, clientMessageId가 실린 error → 대기 행을 확정하거나 failed로
       - room_expiring → store/ws.ts expiringRooms, room_expired → 방과 메시지 제거
       - read_update → store/rooms.ts reads (앞으로만 감). typing_indicator는 방 화면의 useTyping이 직접 받고 저장하지 않음
