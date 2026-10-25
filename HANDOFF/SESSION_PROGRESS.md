@@ -6,7 +6,7 @@
 
 ## Current state (one-liner)
 
-**Phase 1 인증 완료 (2026-10-25)**. 사용자가 2026-10-25에 web-v2 재개를 지시해서(선택지 "지금 시작 + Vitest") 10-24부터의 보류를 풀었다. 백엔드 전환은 아직 진행 중이고 배포 URL이 없어서 로컬 백엔드 기준으로 개발한다. 다음은 Phase 2(채팅, WebSocket)다.
+**Phase 2.1 완료 (2026-10-25)**: WebSocket 클라이언트, 채팅 스토어, 연결 수명 관리가 들어갔다. 다음은 Phase 2.2(방 목록, 1:1 채팅 화면)다. 사용자가 2026-10-25에 web-v2 재개를 지시해서(선택지 "지금 시작 + Vitest") 10-24부터의 보류를 풀었다. 백엔드 전환은 아직 진행 중이고 배포 URL이 없어서 로컬 백엔드 기준으로 개발한다.
 
 Phase 1 결과: 가입과 로그인, single-flight 토큰 갱신, OAuth 콜백 4페이지, AuthGuard, `/me`(유저네임 변경, 로그아웃, 탈퇴). Vitest 94개 테스트와 tsc, lint, build가 모두 통과한다. 독립 리뷰의 HIGH, MEDIUM, LOW-1은 고쳤다. 라우트는 `/`, `/login`, `/signup`, `/auth/{success,oauth-link,oauth-complete,error}`, `/rooms`(임시), `/me`다.
 
@@ -28,6 +28,63 @@ Phase 1 결과: 가입과 로그인, single-flight 토큰 갱신, OAuth 콜백 4
 | lucide-react | 1.14.0 |
 | vitest | 5.0.5 (jsdom 30.1.3, @testing-library/react 16.3.3, @vitejs/plugin-react 6.1.2) |
 | @types/node | 24.19.2 (vitest 5의 peer 요구, 로컬 런타임 Node 24.21에 맞춤) |
+
+---
+
+## 2026-10-25 Phase 2.1 결과
+
+### 커밋 (`git log b296bfc..HEAD`)
+
+| 커밋 | 내용 |
+|---|---|
+| `76bc9eb` | `src/lib/api/rooms.ts` (방 목록과 메시지 조회, zod 스키마). `client.ts`가 `refreshOnce`, `endSession`을 export해서 WS도 같은 single-flight 갱신을 쓴다 |
+| `13db73b` | `src/lib/ws/events.ts`(이벤트 계약), `src/lib/ws/client.ts`(`ChatWSClient`, R2 재연결 규칙) |
+| `0ff1288` | `src/store/{messages,rooms,ws}.ts` |
+| `7f464ee` | `src/lib/chat/{connection,backfill}.ts`, `ChatConnection`, `(authed)` 레이아웃 연결, 알림 문구 |
+| `df2f4f0` | 독립 리뷰 반영 (아래 "독립 리뷰" 표). 다른 탭 계정 전환 차단, 삭제 기록(tombstone), "로드된 방" 구분, 최신 페이지로 건너뛸 때 실시간 행 보존 |
+
+계획(`DEVELOPMENT_PLAN.md` Session 2.1)과 달라진 점은 그 절의 "상태"에 적었다. 요약하면 `src/types/` 없음, `useWebSocket` 대신 `ChatConnection`, 2.3의 낙관적 전송 로직을 앞당김.
+
+### 설계 근거 (server-v2 `07372dd` 코드에서 확인, 읽기만 함)
+
+| 사실 | 근거 | 반영 |
+|---|---|---|
+| `message_ack`는 핸들러 스레드에서 바로, `new_message`는 커밋 뒤 `@Async`로 나간다. 도착 순서가 정해져 있지 않다 | `ChatWebSocketHandler.handleSendMessage`, `ChatEventListener.onMessageSent` | 스토어가 두 순서를 모두 한 행으로 맞춘다 (R6) |
+| 같은 `clientMessageId`로 다시 보내면 저장된 메시지를 돌려주고 이벤트는 다시 내지 않는다 | `MessageService.sendMessage`의 `findByClientMessageId` 조기 반환 | ack만으로 확정한다. 재시도는 같은 id를 쓴다 |
+| 연결을 받아들여도 서버는 아무것도 보내지 않는다. 거부는 핸드셰이크 콜백 안에서 error와 1008로 한다 | `afterConnectionEstablished`, `reject` | "수락"은 onopen 1초 뒤 거부 없음, 또는 error가 아닌 첫 프레임 (R2에 기록) |
+| 재연결 2초 제한은 성공한 등록 시각만 기준으로 센다. 거부된 시도는 기록하지 않는다 | `WebSocketSessionManager.register` | 2초에서 시작하는 백오프와 jitter로 충분하다 |
+| 방에 초대돼도 알림 이벤트가 없다 | `ChatEventListener.onRoomMemberJoined` (메모리 등록만) | 모르는 방의 `new_message`가 오면 `rooms.stale` |
+| REST 메시지에는 `senderNickname`이 있고 `roomId`가 없다. `new_message`는 그 반대다 | `MessageDto.kt`, `ChatEventListener.onMessageSent` | `senderNickname`은 선택 필드. 없으면 방 멤버에서 찾는다 |
+| 최신과 backward 페이지는 내림차순, forward 페이지는 오름차순으로 온다 | `SpringDataMessageRepository` | 스토어가 병합한 뒤 정렬한다 |
+| `Instant.toString()`의 소수 자릿수가 일정하지 않다 | `MessageResponse.createdAt = createdAt.toString()` | 문자열 대신 시각으로 정렬한다. 커서는 받은 문자열 그대로 돌려준다 |
+
+### 검증 (2026-10-25)
+
+`memguard -- npm test` (24개 파일, 162개 테스트), `memguard -- npx tsc --noEmit`, `memguard -- npm run lint`, `memguard -- npm run build`가 모두 exit 0이다. 테스트가 실제로 잡는지 코드를 일부러 망가뜨려 7번 확인했고, 6번은 의도한 테스트가 실패했다. 남은 1번(오류 처리기에서 ack 타이머를 지우지 않게 바꿈)은 재시도 경로가 같은 타이머를 한 번 더 지워서 동작이 달라지지 않았다.
+
+리뷰 반영(`df2f4f0`) 뒤에는 27개 파일, 182개 테스트와 tsc, lint, build가 모두 exit 0이다. 기존 테스트 케이스는 고치지 않았고, 새 케이스는 파일 끝에 붙이거나 새 파일로 썼다. 계정 확인과 tombstone을 일부러 빼 보니 새 테스트가 각각 실패했다.
+
+### 독립 리뷰 (Phase 2.1, 2026-10-25)
+
+판정은 REQUEST CHANGES였고 HIGH 1, MEDIUM 4, LOW 6건이었다. 서버 쪽 주장은 `07372dd` 코드로 다시 확인했다.
+
+| 등급 | 지적 | 처리 |
+|---|---|---|
+| HIGH | 토큰이 모든 탭에 공유돼서, 다른 탭이 다른 계정으로 로그인하면 이 탭이 재연결 때 그 계정으로 붙어 이벤트가 섞인다. 다른 탭에서 로그아웃해도 이 탭은 그대로 남는다 | ✅ `df2f4f0`. 클라이언트를 사용자에 고정하고, 다른 계정 토큰이면 닫은 뒤 `verifySession()`. AppBoot가 `storage` 이벤트로 다른 탭의 로그아웃과 계정 전환을 감지 |
+| MEDIUM | 최신 페이지로 건너뛸 때 그사이 실시간으로 온 행까지 지운다 | ✅ 그 페이지보다 오래된 서버 행만 버린다 |
+| MEDIUM | 만료되거나 burn된 메시지가 늦게 도착한 REST 페이지로 되살아난다 | ✅ tombstone. 리뷰가 함께 제안한 `expiresAt` 시각 필터는 넣지 않았다. 시계가 빠른 클라이언트에서 30초짜리 새 메시지가 사라질 수 있어서다 |
+| MEDIUM | 실시간 메시지 하나만 받은 방도 "로드됨"이 되어 backfill 대상이 되고, 빈 방은 backfill을 건너뛰며, 수락 뒤에 온 첫 페이지와 방 등록 사이가 빈다 | ✅ `loaded` 표시를 따로 두고, 빈 방은 최신 페이지를 받고, `loadRoomMessages()`가 수락 뒤 첫 페이지에 backfill을 한 번 더 돈다 |
+| MEDIUM | 커서가 커밋 순서와 `createdAt` 순서를 같다고 본다. 같은 방에 동시에 보낸 두 메시지의 커밋 순서가 뒤바뀐 채 끊기면 하나가 빠질 수 있다 | **보류, 사용자 승인 필요**. 커서를 몇 초 겹쳐 잡는 수정이 기존 `backfill.test.ts`의 정확한 커서 기대값을 바꾼다 (테스트 정책상 승인 대상) |
+| LOW | TOKEN_EXPIRED 뒤 재연결이 늘어난 백오프를 기다린다 | ✅ 최소 간격 뒤 재연결. refresh 1회 제한은 유지하고 R2에 적었다 |
+| LOW | 같은 밀리초 안의 행을 무작위 UUID 순으로 정렬한다 | ✅ 마이크로초 자릿수를 먼저 비교 |
+| LOW | ack만 받은 행은 서버 사본이 오기 전까지 클라이언트 시각으로 끝에 남는다 | 남김. 다음 backfill이나 방 재로딩 때 서버 사본으로 바뀐다 |
+| LOW | ack를 잃은 뒤 backfill로 받은 서버 행과 failed 행이 둘 다 보인다 | 서버 보고 S12. 같은 id로 재시도하면 한 행으로 합쳐진다 |
+| LOW | 계약 밖 프레임(새 `MessageType` 등)을 운영에서 조용히 버리고, REST는 페이지 전체가 실패한다 | 남김. 계약이 바뀔 때 어떻게 다룰지는 결정이 필요하다 |
+| LOW | 아직 수락되지 않은 소켓에도 보낸다. 거부되면 5초 뒤에야 failed가 된다 | 남김. 5초 대비책으로 처리된다 |
+
+리뷰가 남긴 확인 사항: 수락 창(1초) 설계는 타당하다는 의견이었다. 다만 서버가 `findAllByUserId`(DB) 뒤에 방을 등록하므로, DB가 1초보다 느리면 backfill이 방 등록보다 먼저 돌 수 있다. 근본 해결은 서버의 연결 완료 프레임이다(S13). heartbeat가 없어서 끊긴 연결이 계속 열린 것처럼 보일 수 있다(S14).
+
+실제 백엔드에 붙인 2탭 확인은 아직 하지 않았다. 2026-10-25 기준 로컬 8080에 서버가 없었다 (`geekchat-dev-postgres` 컨테이너만 실행 중). 절차는 아래 "다음 세션" 1번에 있다.
 
 ---
 
@@ -144,6 +201,10 @@ LOW-2 수정 후보 (미실측): 지금처럼 즉시 지운 뒤 `queueMicrotask`
 | S6 | server-v2 `SpringDataMessageRepository.findByRoomIdAfter` | 메시지 cursor 페이징에 id 보조 정렬이 없어서, 같은 `createdAt`을 가진 메시지가 페이지 경계에서 빠질 수 있다 (가능성 낮음) |
 | S8, S9 | server-v2 인증 | 보안 항목 2건. 2026-10-25에 사용자에게 직접 보고했다. 이 저장소는 공개라서 고쳐질 때까지 상세는 적지 않는다. **운영 배포 전 처리 권장** |
 | S10 | server-v2 `SecurityConfig.securityFilterChain` | `/error`가 허용 목록에 없고 entry point가 본문 없는 401을 돌려준다. 그래서 공개 엔드포인트의 bean validation 실패(400)가 401로 바뀌어 보일 수 있다 (설정 기준, 실측 전). web-v2는 서버와 같은 검증을 폼에서 먼저 해서 영향이 작다 |
+| S11 | server-v2 `ChatEventListener.onMessageExpired`, `MessageExpirationScheduler` | 스케줄러가 `@Transactional` 안에서 이벤트를 내고 리스너는 `@Async @EventListener`라서, `message_expired`가 삭제 커밋보다 먼저 나갈 수 있다. 그 사이 REST가 지운 메시지를 돌려준다. web-v2는 tombstone으로 막았다. `AFTER_COMMIT`으로 바꾸면 근본 해결 |
+| S12 | server-v2 `MessageResponse` (`MessageDto.kt`) | `clientMessageId`가 없어서 ack를 잃은 메시지를 REST 행과 맞출 수 없다. failed 행과 서버 행이 함께 보인다 |
+| S13 | server-v2 `ChatWebSocketHandler.afterConnectionEstablished` | 연결을 받아들여도 아무 프레임을 보내지 않아서, 클라이언트는 1초 동안 거부가 없으면 수락으로 본다. `connected` 같은 프레임이 있으면 추정할 필요가 없다 |
+| S14 | server-v2 websocket 모듈 | 로그아웃과 탈퇴 때 그 사용자의 소켓을 닫지 않는다(닫는 곳은 `reject` 하나). heartbeat 설정도 없어서 끊긴 연결이 열린 것처럼 남을 수 있다. 배포 환경 프록시의 idle timeout도 확인이 필요하다 |
 | S7 | server-v2 `ChatErrorMapping.kt` | 에러 본문의 `error`가 HTTP reason phrase라서 같은 상태 코드를 쓰는 도메인 에러(예: 가입 409의 유저네임과 이메일)를 구분하려면 영어 메시지 앞부분을 봐야 한다. 안정적인 `code` 필드가 있으면 클라이언트가 메시지 문구에 기대지 않아도 된다 |
 | T1 | `geek-chat-web` main `559d170` | v2가 리다이렉트하는 `/auth/oauth-link`, `/auth/oauth-complete`, `/auth/error` 라우트 파일이 없음. v1 연동은 `/auth/success#linking_required=true` 형식 (`app/auth/success.tsx:18-33`). web-internal 세션에 공유함. 10-25 기준 v1 `feat/v2-transport` 브랜치(`76cb0b1`)에서 처리 중이고 아직 머지 전 |
 
@@ -179,7 +240,7 @@ ea0f041 feat(env): add env validation + strict CSP headers + Turbopack root pin
 
 ## In-flight
 
-없음. Phase 1.2는 커밋까지 끝났다. 진행 중이던 코드 변경은 없다.
+없음. Phase 2.1과 리뷰 반영(`df2f4f0`)까지 커밋했고, 문서를 커밋한 뒤 `main`에 반영해 push한다. push하면 Vercel `web` 프로젝트가 web-v2 운영 배포를 처음 만든다.
 
 ---
 
@@ -232,6 +293,8 @@ location.reload()
 
 확인할 흐름: 가입과 로그인 실패 문구(중복 유저네임, 틀린 비밀번호), `/me`의 유저네임 변경과 로그아웃, 탈퇴 후 재로그인 시 "탈퇴한 계정입니다". 백엔드를 끄고 새로고침하면 로그아웃되지 않고 재시도 화면이 떠야 한다. 실제 Google/Naver 로그인은 OAuth 콘솔에 redirect URL을 등록해야 확인할 수 있다.
 
+Phase 2.1 WS 확인 (화면은 2.2부터라 개발자 도구로 본다): `/rooms`를 열면 Network 탭의 WS에 `/ws?token=` 연결 하나가 생기고, 서버 로그에 `ws_connected`가 찍힌다. 서버를 껐다 켜면 2초, 4초, 8초 간격으로 다시 붙는다. 같은 사용자로 탭을 4개 열면 4번째 탭에 "다른 탭에서 채팅이 열려 있어" 토스트가 뜨고, 탭 하나를 닫은 뒤 "다시 시도"를 누르면 붙는다. `/me`에서 로그아웃하면 WS가 1000으로 닫힌다.
+
 빠른 시각 검증 (CSP 헤더):
 ```bash
 curl -I http://localhost:3000 | grep -i 'content-security'
@@ -258,12 +321,14 @@ PR #11(`fix/ws-contract-gaps`)은 `07372dd`로 머지됐고, 이 세션에서 �
 
 R2의 1008 분기는 바뀌지 않는다. PR #11에서도 close는 `reject`의 `POLICY_VIOLATION` 하나이고, 1008은 연결할 때만 온다.
 
-### 3. Phase 2.1: 타입과 WebSocket 클라이언트
+### 3. Phase 2.2: 방 목록과 1:1 채팅 화면
 
-`HANDOFF/DEVELOPMENT_PLAN.md`의 Session 2.1을 따르되, 연결과 재연결 규칙은 `.claude/RULES.md` R2가 정본이다. 특히 지킬 것:
-- WS도 `apiFetch`와 같은 single-flight refresh를 쓴다 (`src/lib/api/client.ts`의 `refreshOnce`를 export).
-- 백오프와 refresh 1회 제한은 연결이 안정된 뒤에만 되돌린다 (`onopen`에서 되돌리지 않는다).
-- 재연결이 받아들여진 뒤 열린 방의 놓친 메시지를 forward cursor 조회로 채운다.
+`HANDOFF/DEVELOPMENT_PLAN.md`의 Session 2.2를 따른다. 2.1에서 정해 둔 연결점:
+- 방 목록: SWR로 `listRooms()`를 부르고 결과를 `useRoomsStore.getState().setRooms()`에 넣는다. `stale`이 서면 다시 받는다 (서버에 방 추가 이벤트가 없다).
+- 방 화면: 마운트할 때 `setCurrentRoom(id)`, 첫 페이지는 `listMessages(id)` 결과를 `mergeServerMessages(id, rows)`로 넣는다. 위로 스크롤하면 `direction: "backward"`이고 커서는 가장 오래된 서버 행의 `createdAt` 문자열이다.
+- 보내기는 `sendChatMessage()`, 실패한 행의 재시도는 `retryChatMessage()`를 쓴다. React key는 `clientMessageId ?? id`.
+- 보낸 사람 이름: REST 행은 `senderNickname`, WS로 온 행은 방 멤버에서 찾는다.
+- `upsertRoom`은 방 생성과 함께 넣는다.
 
 ### 4. 세션 종료 직전
 
@@ -285,6 +350,10 @@ R2의 1008 분기는 바뀌지 않는다. PR #11에서도 close는 `reject`의 `
 | 리뷰 MEDIUM: 콜백 링크 출처 확인 | ✅ web-v2 쪽은 `d0a9116` (사용자가 "둘 다" 선택). 서버 쪽 보완은 사용자가 따로 처리 |
 | S8, S9 서버 보안 항목 | 사용자가 처리 담당을 정함. 운영 배포 전 처리 권장 |
 | 리뷰 LOW-2: Next canonical URL에 hash 잔류 | 남김. 위 "코드 리뷰" 절의 수정 후보를 dev에서 실측한 뒤 적용 |
+| Phase 2.1 실측 | 남음. 로컬 백엔드를 띄운 뒤 "다음 세션" 1번의 WS 확인을 한다 |
+| 다른 탭의 로그아웃과 계정 전환 | ✅ `df2f4f0`. 리뷰 HIGH로 올라와서 고쳤다. 다른 탭이 로그아웃하면 이 탭도 로그아웃되고, 다른 계정으로 로그인하면 이 탭도 그 계정으로 바뀐다 |
+| 리뷰 MEDIUM M4: 커서와 커밋 순서 | 사용자 승인 대기. 기존 `backfill.test.ts`의 커서 기대값을 바꿔야 해서 테스트 정책상 묻는다 |
+| Vercel 배포 | `web` 프로젝트가 `geek-chat/web-v2`를 배포한다 (2026-10-25 사용자 결정, ARCHITECTURE.md §5). env는 자리표시 값이라 로그인과 채팅은 백엔드 배포 뒤에 동작한다 |
 
 ---
 
@@ -298,6 +367,8 @@ R2의 1008 분기는 바뀌지 않는다. PR #11에서도 close는 `reject`의 `
 - **i18n**: `src/i18n/ko.ts` flat key/value, `t(key, vars)`가 `{name}` 자리를 채운다. API 에러 문구는 `describeApiError(err, context)`가 HTTP 상태와 호출 맥락으로 고른다 (서버 `error` 필드는 reason phrase라 도메인 코드로 쓸 수 없다).
 - **세션**: `src/lib/auth/session.ts`의 `verifySession`과 `startSession`이 스토어 상태를 정한다. 401/403/404만 세션을 끝내고, 그 밖의 실패는 토큰을 남긴 채 `offline`이다.
 - **OAuth 콜백**: hash는 `useOAuthHash`로만 읽는다. 일회용 토큰은 컴포넌트 상태에만 둔다.
+- **WS 연결**: `ChatConnection`(`(authed)` 레이아웃, `AuthGuard` 안)이 `src/lib/chat/connection.ts`로 클라이언트 하나를 잡고 놓는다. 마지막으로 놓으면 다음 태스크에 닫고 채팅 스토어를 비운다. 재연결 규칙은 `src/lib/ws/client.ts`, 정본은 RULES.md R2.
+- **메시지 스토어**: 서버 행은 시각과 id 순, 클라이언트 시각만 있는 행은 끝에 둔다. ack와 `new_message`의 도착 순서와 상관없이 한 행으로 맞춘다 (RULES.md R6).
 - **OAuth 흐름 표시**: 버튼을 누를 때 sessionStorage에 10분짜리 표시를 남기고, 콜백은 그 표시가 있을 때만 hash를 쓴 뒤 표시를 지운다 (`src/lib/auth/oauthFlow.ts`). 다른 탭으로 돌아오는 OAuth 흐름은 거절되는데, 이건 감수하기로 한 트레이드오프다.
 - **CSP**: 엄격. `script-src 'self'` (no inline/eval), `connect-src` 환경변수만, `frame-ancestors 'none'`.
 - **localStorage 토큰 + CSP** 조합으로 XSS 표면 최소화 (RULES.md R5).
@@ -332,4 +403,4 @@ R2의 1008 분기는 바뀌지 않는다. PR #11에서도 close는 `reject`의 `
 
 ## 한 줄 요약
 
-> **web-v2는 Phase 1(인증)을 마쳤고 다음은 Phase 2(채팅, WebSocket)다. 환경 복구 → 기준선 확인 → Phase 2.1 순서로 진행한다. 끝날 때 refresh-context 스킬 호출 필수.**
+> **web-v2는 Phase 1(인증)과 Phase 2.1(WS 클라이언트, 스토어)을 마쳤고 다음은 Phase 2.2(방 목록, 채팅 화면)다. 환경 복구 → 기준선 확인 → (백엔드가 있으면) WS 실측 → Phase 2.2 순서로 진행한다. 끝날 때 refresh-context 스킬 호출 필수.**

@@ -252,205 +252,36 @@ wss://api.<domain>/ws?token=<access_token>      // prod
 | `INVALID_DATA` | 필수 필드 누락 | 클라 버그. 요청에 `clientMessageId`가 있었으면 함께 오니 그 대기 메시지를 failed로 |
 | `SEND_FAILED` | sendMessage 비즈니스 실패 (예: 방 멤버 아님) | `clientMessageId`가 항상 함께 온다. 그 대기 메시지를 바로 failed로 바꾸고 사용자에게 보여줌 (RULES.md R6) |
 
-### WebSocket 클라이언트 클래스 (권장 구조)
+### WebSocket 클라이언트 (구현: `src/lib/ws/client.ts`)
 
-```typescript
-// src/lib/ws/client.ts  (재연결 규칙 정본: .claude/RULES.md R2)
-type Handler = (data: any) => void
+재연결 규칙의 정본은 `.claude/RULES.md` R2이고, 구현은 `src/lib/ws/client.ts`의 `ChatWSClient`다. 예전에 여기 있던 샘플 클래스는 지웠다. `close()` 뒤에도 대기 중인 타이머나 끝나지 않은 refresh가 소켓을 다시 열 수 있었고, `sendMessage`가 매번 새 UUID를 만들어 재시도가 다른 메시지가 됐기 때문이다.
 
-const MIN_RECONNECT_MS = 2000 // 서버 WebSocketSessionManager.MIN_CONNECTION_INTERVAL_MS
-const MAX_RECONNECT_MS = 30000
-const STABLE_AFTER_MS = 10000 // 이만큼 열려 있거나 error가 아닌 메시지가 오면 정상 연결로 본다
+요점:
+- 래퍼 하나가 리스너를 계속 들고 있고, 시도할 때마다 새 `WebSocket`에 콜백을 다시 단다. 교체된 소켓의 콜백은 무시한다.
+- 토큰은 시도할 때마다 storage에서 읽는다. 곧 만료될 토큰이면 연결 전에 공용 `refreshOnce()`로 갱신한다.
+- 1008은 직전 거부 코드로 나눈다. `MAX_CONNECTIONS`는 `retry()`를 기다리고, `RATE_LIMITED`는 refresh 없이 백오프한다. 인증 코드는 refresh를 한 번 하고, 다음 시도도 같은 이유로 거부되면 세션을 끝낸다.
+- 백오프는 2초에서 시작해 30초까지 두 배씩 늘고 jitter가 붙는다. 10초 유지되거나 error가 아닌 프레임이 와야 되돌린다.
+- 상태는 `idle`, `connecting`, `open`(서버가 받아들임), `reconnecting`, `blocked`(`MAX_CONNECTIONS`), `closed` 여섯 가지다.
+- `send()`는 열린 소켓이 없으면 `false`를 돌려준다.
 
-export class ChatWebSocketClient {
-  private ws: WebSocket | null = null
-  // 리스너는 교체되지 않는 래퍼에 둔다. WebSocket 인스턴스는 재연결할 때마다 새로 생긴다
-  private handlers = new Map<string, Set<Handler>>()
-  private reconnectMs = MIN_RECONNECT_MS
-  private intentionalClose = false
-  private lastErrorCode: string | null = null
-  private authRetried = false
-  private stableTimer: ReturnType<typeof setTimeout> | undefined
+### 연결 수명과 이벤트 연결 (구현: `src/lib/chat/connection.ts`)
 
-  connect() {
-    // (선택) 곧 만료될 토큰이면 연결 전에 refreshOnce()로 먼저 갱신한다 (RULES.md R2)
-    // 토큰은 시도할 때마다 storage에서 읽는다. 갱신 전에 잡아 둔 값으로 붙지 않게 한다
-    const url = `${env.NEXT_PUBLIC_WS_URL}?token=${getAccessToken()}`
-    this.lastErrorCode = null
-    this.ws = new WebSocket(url)
-
-    this.ws.onopen = () => {
-      // 여기서 백오프를 되돌리지 않는다. 서버는 연결을 연 뒤에 검사해서
-      // 거부될 연결도 onopen이 먼저 불리고, 그다음 error와 close 1008이 온다
-      this.stableTimer = setTimeout(() => this.markStable(), STABLE_AFTER_MS)
-    }
-
-    this.ws.onmessage = (e) => {
-      const { type, data } = JSON.parse(e.data)
-      if (type === 'error') this.lastErrorCode = data.code
-      else this.markStable()
-      this.handlers.get(type)?.forEach((h) => h(data))
-    }
-
-    this.ws.onclose = (e) => {
-      clearTimeout(this.stableTimer)
-      if (this.intentionalClose) return
-
-      if (e.code === 1008) {
-        // 1008은 원인 다섯 개가 함께 쓴다. close 직전 error.code로 나눈다
-        switch (this.lastErrorCode) {
-          case 'MAX_CONNECTIONS':
-            notifyTooManyConnections() // 재연결하지 않는다
-            return
-          case 'RATE_LIMITED':
-            this.scheduleReconnect() // refresh 없이 2초 이상 기다린다
-            return
-          default: // TOKEN_EXPIRED, INVALID_TOKEN, NO_TOKEN, error 이벤트 없음
-            void this.refreshAndReconnect()
-            return
-        }
-      }
-
-      // 그 외 종료 → 2초부터 시작하는 지수 백오프
-      this.scheduleReconnect()
-    }
-  }
-
-  // 정상 연결이 확인됐을 때만 백오프와 refresh 1회 제한을 되돌린다 (RULES.md R2)
-  private markStable() {
-    clearTimeout(this.stableTimer)
-    this.reconnectMs = MIN_RECONNECT_MS
-    this.authRetried = false
-  }
-
-  private scheduleReconnect() {
-    const delay = this.reconnectMs + Math.random() * 1000 // jitter
-    setTimeout(() => this.connect(), delay)
-    this.reconnectMs = Math.min(this.reconnectMs * 2, MAX_RECONNECT_MS)
-  }
-
-  on(type: string, handler: Handler): () => void {
-    if (!this.handlers.has(type)) this.handlers.set(type, new Set())
-    this.handlers.get(type)!.add(handler)
-    return () => this.handlers.get(type)!.delete(handler)
-  }
-
-  send(type: string, data: any) {
-    if (this.ws?.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify({ type, data }))
-    }
-  }
-
-  sendMessage(roomId: string, content: string, ttlSeconds = 0) {
-    this.send('send_message', {
-      roomId,
-      content,
-      clientMessageId: crypto.randomUUID(),
-      ttlSeconds,
-    })
-  }
-
-  typingStart(roomId: string) {
-    this.send('typing_start', { roomId })
-  }
-
-  markRead(roomId: string, lastReadMessageId: string) {
-    this.send('mark_read', { roomId, lastReadMessageId })
-  }
-
-  close() {
-    this.intentionalClose = true
-    this.ws?.close()
-  }
-
-  private async refreshAndReconnect() {
-    // 갱신한 뒤에도 같은 인증 실패가 나오면 로그아웃한다 (무한 반복 방지)
-    if (this.authRetried) {
-      useAuthStore.getState().clearSession()
-      return
-    }
-    this.authRetried = true
-    try {
-      await refreshOnce() // apiFetch와 같은 single-flight 갱신. 갱신 경로를 둘로 만들지 않는다
-    } catch {
-      useAuthStore.getState().clearSession()
-      return
-    }
-    this.scheduleReconnect() // 갱신 직후에도 서버의 2초 제한을 지킨다
-  }
-}
-```
-
-### 통합 패턴 (권장: Zustand store + 단일 인스턴스)
-
-```typescript
-// src/store/ws.ts
-export const useWsStore = create<WsState>((set, get) => ({
-  client: null,
-  connect: () => {
-    const c = new ChatWebSocketClient()
-    c.connect() // 토큰은 client가 storage에서 직접 읽는다
-    set({ client: c })
-  },
-  disconnect: () => {
-    get().client?.close()
-    set({ client: null })
-  },
-}))
-
-// 사용
-const ws = useWsStore((s) => s.client)
-useEffect(() => {
-  const off = ws?.on('new_message', (data) => addMessage(data))
-  return off
-}, [ws])
-```
-
-**Why Zustand 단일 인스턴스**: WebSocket은 글로벌 자원. 컴포넌트마다 connect하면 N개 연결 (서버 max 3 위반). Zustand store에 1개만 두고 모두 구독.
+- `(authed)` 레이아웃이 `ChatConnection`(`src/components/chat/ChatConnection.tsx`)을 `AuthGuard` 안에 둔다. 인증된 화면이 보이는 동안에만 연결이 살아 있다.
+- `acquireChat()`과 `releaseChat()`이 보유 수를 센다. 마지막 해제는 다음 태스크에 닫으므로 Strict Mode의 mount, unmount, mount가 소켓 하나로 끝난다. 닫을 때 채팅 스토어도 비운다.
+- 이벤트는 스토어로 간다(`new_message`, `message_ack`, `clientMessageId`가 실린 `error`, `message_expired`, `message_burned`, `room_expiring`, `room_expired`). 서버가 연결을 받아들일 때마다 backfill(`src/lib/chat/backfill.ts`)이 돈다.
+- 컴포넌트에서 `new ChatWSClient()`를 만들지 않는다. 서버 상한이 사용자당 3개라서다.
 
 ---
 
 ## 6. Optimistic UI (메시지 전송)
 
-권장 패턴:
+구현은 `src/lib/chat/connection.ts`의 `sendChatMessage()`, `retryChatMessage()`와 `src/store/messages.ts`에 있다. 규칙 정본은 RULES.md R6이다.
 
-```typescript
-function sendMessage(roomId: string, content: string) {
-  const clientMessageId = crypto.randomUUID()
-  const tempMessage = {
-    id: clientMessageId,  // 임시
-    roomId,
-    senderId: currentUserId,
-    content,
-    type: 'TEXT',
-    createdAt: new Date().toISOString(),
-    pending: true,
-  }
-
-  // 1. 즉시 UI에 추가
-  addMessageToRoom(roomId, tempMessage)
-
-  // 2. WS로 전송
-  ws.sendMessage(roomId, content)
-
-  // 3. message_ack 받으면 임시 메시지를 serverId로 교체
-  ws.on('message_ack', ({ clientMessageId: cmid, serverId }) => {
-    if (cmid === clientMessageId) {
-      replaceMessageId(roomId, clientMessageId, serverId)
-      markMessageSent(roomId, serverId)
-    }
-  })
-
-  // 4. 5초 내 ack 없으면 실패 표시
-  setTimeout(() => {
-    if (isMessagePending(roomId, clientMessageId)) {
-      markMessageFailed(roomId, clientMessageId)
-    }
-  }, 5000)
-}
-```
-
-서버는 `clientMessageId` 멱등성을 보장하므로 재전송도 안전 (3중 방어: 사전 조회 + UNIQUE 제약 + race-condition catch).
+1. `sendChatMessage()`가 `clientMessageId`를 만들고 대기(`pending`) 행을 바로 붙인 뒤 보낸다. 열린 소켓이 없으면 그 자리에서 `failed`가 된다.
+2. `message_ack`와 `new_message`는 어느 쪽이 먼저 올지 모른다. ack는 핸들러 스레드에서 바로 나가고, `new_message`는 커밋 뒤 비동기 리스너에서 나가기 때문이다. 스토어는 두 순서를 모두 한 행으로 맞춘다.
+3. `clientMessageId`가 실린 `error`(`SEND_FAILED`, `INVALID_DATA`)는 그 행을 바로 `failed`로 바꾼다. 5초 안에 ack가 없을 때도 `failed`다.
+4. `retryChatMessage()`는 같은 `clientMessageId`로 다시 보낸다. 이미 저장된 메시지라면 서버가 저장된 것을 돌려준다(사전 조회, UNIQUE 제약, 경합 catch의 3중 방어). 이 경우 ack만 오고 `new_message`는 오지 않으니, 스토어는 ack만으로도 확정한다.
+5. React key는 `clientMessageId ?? id`로 둔다. 그래야 ack 뒤에도 같은 행으로 남는다.
 
 ---
 

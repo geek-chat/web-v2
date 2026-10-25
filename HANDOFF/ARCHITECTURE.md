@@ -55,7 +55,7 @@ geek-chat-web-v2/
     │   │       ├── oauth-complete/page.tsx # SignupRequired
     │   │       └── error/page.tsx       # ?error=<code> (4종, §7)
     │   └── (authed)/
-    │       ├── layout.tsx               # AuthGuard + WS boot + Sidebar
+    │       ├── layout.tsx               # AuthGuard + ChatConnection (Sidebar는 2.2)
     │       ├── rooms/
     │       │   ├── page.tsx             # 방 목록
     │       │   ├── new/page.tsx         # 새 방 만들기
@@ -63,13 +63,14 @@ geek-chat-web-v2/
     │       ├── me/page.tsx              # 프로필 + 로그아웃 + 탈퇴
     │       └── invite/[code]/page.tsx   # 초대 링크 join 처리
     ├── components/
-    │   ├── AppBoot.tsx                  # /auth/me hydrate + WS connect
+    │   ├── AppBoot.tsx                  # /auth/me 검증, auth:logout, online 재시도, 다른 탭의 로그아웃과 계정 전환 감지 (WS는 ChatConnection)
     │   ├── auth/
     │   │   ├── AuthGuard.tsx
     │   │   ├── SignupForm.tsx           # rhf+zod
     │   │   ├── LoginForm.tsx
     │   │   └── OAuthButtons.tsx
     │   ├── chat/
+    │   │   ├── ChatConnection.tsx       # 연결 수명 + 알림 토스트 (2.1)
     │   │   ├── ChatRoom.tsx             # MessageList + MessageInput + Header
     │   │   ├── ChatHeader.tsx
     │   │   ├── MessageList.tsx
@@ -97,9 +98,11 @@ geek-chat-web-v2/
     │   │   ├── rooms.ts
     │   │   └── invite.ts
     │   ├── ws/
-    │   │   ├── client.ts                # ChatWSClient class
-    │   │   ├── envelope.ts              # 타입 가드
-    │   │   └── reconnect.ts             # 백오프 + 1008 원인별 분기 (RULES.md R2)
+    │   │   ├── client.ts                # ChatWSClient: 백오프, 1008 원인별 분기 (RULES.md R2)
+    │   │   └── events.ts                # 서버/클라이언트 이벤트 zod 계약
+    │   ├── chat/
+    │   │   ├── connection.ts            # 싱글턴 수명, 이벤트 → 스토어, 낙관적 전송 (R2, R6)
+    │   │   └── backfill.ts              # 연결 수락 뒤 forward cursor 보충
     │   ├── auth/
     │   │   ├── storage.ts               # localStorage
     │   │   ├── jwt.ts                   # decode payload (만료 사전 체크)
@@ -108,20 +111,17 @@ geek-chat-web-v2/
     │   ├── time.ts
     │   └── uuid.ts                      # crypto.randomUUID() wrapper
     ├── store/
-    │   ├── auth.ts                      # user, accessToken, refreshToken, status
-    │   ├── rooms.ts                     # rooms[], currentRoomId
-    │   ├── messages.ts                  # byRoom: roomId → Message[]
-    │   └── ws.ts                        # client 인스턴스 + status
+    │   ├── auth.ts                      # status, user (토큰은 lib/auth/storage만)
+    │   ├── rooms.ts                     # rooms, currentRoomId, stale
+    │   ├── messages.ts                  # byRoom: 서버 시각 순 + 대기 행은 끝
+    │   └── ws.ts                        # client, status, expiringRooms
     ├── hooks/
     │   ├── useAuth.ts
     │   ├── useRooms.ts
     │   ├── useMessages.ts
-    │   ├── useWebSocket.ts
     │   └── useUserSearch.ts
-    ├── types/
-    │   ├── api.ts                       # 백엔드 DTO + zod 스키마
-    │   ├── ws.ts                        # WS envelope union
-    │   └── domain.ts                    # User, Room, Message
+    ├── test/
+    │   └── fakeWebSocket.ts             # 테스트용 WebSocket 대역
     └── i18n/
         ├── ko.ts                        # 메시지 객체 맵
         └── index.ts                     # t(key) 헬퍼
@@ -134,23 +134,26 @@ geek-chat-web-v2/
 ### 2.1 API 호출 — SWR + 단일-플라이트 fetch wrapper
 
 - 정적 데이터(방 목록, /auth/me, 유저 검색)는 SWR로 fetch + cache.
-- WS 이벤트 수신 시 `mutate('/api/rooms', ...)`로 부분 갱신.
+- WS 이벤트는 `store/rooms.ts`를 바로 갱신한다. 목록에 없는 방의 `new_message`가 오면 `stale`을 세워 목록 쪽이 다시 받게 한다 (서버에 방 추가 이벤트가 없다. SWR 연결은 2.2).
+- zod 스키마는 `src/types/`가 아니라 `src/lib/api/<domain>.ts`에 둔다 (RULES.md R7). WS 이벤트 스키마는 `src/lib/ws/events.ts`.
 - 모든 fetch는 `lib/api/client.ts`의 `apiFetch()`를 거침 (refresh 자동 처리).
 
 ### 2.2 WebSocket — Zustand 싱글톤
 
 ```
-(authed)/layout.tsx mount
-  → useWebSocket() 훅 호출
-    → store/ws.ts의 connect() — ChatWSClient 인스턴스 생성
-      → ws://...?token= 으로 연결
-      → onmessage → 이벤트 type별로 해당 store 업데이트
-        - new_message → store/messages.ts append
-        - room_expiring → store/ws.ts.expiringRooms 추가
-      → onclose (처리 규칙 정본: .claude/RULES.md R2)
-        - code 1000 (정상) + intentionalClose → 재연결 X
-        - code 1008 → close 직전 error.code로 분기 (TOKEN_EXPIRED만 refresh, RATE_LIMITED는 2초 이상 대기, MAX_CONNECTIONS는 재연결 X)
-        - 그 외 → 백오프 (2s → 4s → 8s → ... cap 30s, jitter)
+(authed)/layout.tsx → AuthGuard(authenticated) → ChatConnection mount
+  → lib/chat/connection.ts acquireChat(): ChatWSClient 1개를 만들어 store/ws.ts에 두고 이벤트를 연결
+    → ws://...?token= 으로 연결 (토큰은 시도마다 storage에서 읽음)
+    → 서버가 받아들이면 (onopen 1초 뒤 거부 없음, 또는 error가 아닌 첫 프레임) status "open" → backfill
+    → onmessage → 이벤트별 스토어 갱신
+      - new_message → store/messages.ts 병합, store/rooms.ts lastMessageAt (모르는 방이면 stale)
+      - message_ack, clientMessageId가 실린 error → 대기 행을 확정하거나 failed로
+      - room_expiring → store/ws.ts expiringRooms, room_expired → 방과 메시지 제거
+    → onclose (처리 규칙 정본: .claude/RULES.md R2)
+      - close() (로그아웃, 인증 화면을 벗어남) → 재연결 X
+      - 1008 → 직전 거부 코드로 분기 (인증 코드는 refresh 1회, RATE_LIMITED는 refresh 없이 백오프, MAX_CONNECTIONS는 수동 재시도)
+      - 그 외 → 백오프 (2s → 4s → 8s → ... cap 30s, jitter)
+  unmount (로그아웃 등) → releaseChat(): 다음 태스크에 close + 채팅 스토어 비움
 ```
 
 **Why Zustand 싱글톤**: WebSocket은 글로벌 자원. Provider 패턴은 (1) React 트리 밖에서 접근 불가, (2) 이벤트마다 Provider 리렌더, (3) App Router 네비 시 unmount 영향. Zustand에 1개만 두고 모두 구독.
@@ -248,6 +251,7 @@ NEXT_PUBLIC_WS_URL=ws://localhost:8080/ws
 - **백엔드 배포 대상**: Render 무료(Docker) + Supabase Postgres (server-v2 `docs/MIGRATION.md` Phase 8). 서비스 URL은 아직 없다. Render 무료는 15분 동안 요청이 없으면 잠들어서 첫 요청이 느리다.
 - Vercel 빌드 자동 (`next build`). Output `.next` 자동.
 - main push → 자동 prod 배포. PR 브랜치 → preview 배포.
+- **Vercel 프로젝트 (2026-10-25)**: `jungsehuis-projects/web` 프로젝트의 Git 연결을 v1 `geek-chat/web`에서 `geek-chat/web-v2`로 바꿨다(사용자 결정). 도메인은 `web-lac-one-89.vercel.app` 그대로이고, Framework Preset은 Next.js, v1(Expo)의 빌드와 출력 경로 덮어쓰기는 껐다. env는 백엔드가 없어서 Production에 자리표시 값(`https://api.invalid`, `wss://api.invalid/ws`)을 넣었다. `.invalid`는 해석되지 않는 예약 도메인이라 로그인 폼 값이 밖으로 나가지 않는다. 백엔드를 배포하면 env를 실제 URL로 바꾸고 Redeploy하고, 백엔드 `FRONTEND_URL`을 `https://web-lac-one-89.vercel.app`으로 맞춘다. v1로 되돌릴 때는 이전 운영 배포로 Instant Rollback하면 된다 (Production Deployments 보존 기간 30일).
 
 ---
 

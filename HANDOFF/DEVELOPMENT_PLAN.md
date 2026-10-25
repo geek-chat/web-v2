@@ -130,6 +130,13 @@ npm run dev
 
 ### Session 2.1 — 타입 + WS 클라이언트
 
+**상태 (2026-10-25)**: 완료 (`76bc9eb`부터 `7f464ee`까지). 아래 계획과 달라진 점:
+- `src/types/`는 만들지 않았다. zod 스키마는 RULES.md R7대로 `src/lib/api/rooms.ts`(REST)와 `src/lib/ws/events.ts`(WS)에 있다.
+- `envelope.ts`와 `reconnect.ts` 대신 `events.ts` 하나를 두고, 백오프는 `client.ts` 안에 넣었다.
+- `useWebSocket` 훅 대신 `ChatConnection` 컴포넌트와 `src/lib/chat/connection.ts`를 썼다. Strict Mode에서도 소켓이 하나로 유지되고, React 밖에서 테스트할 수 있다.
+- 2.3의 낙관적 전송 로직(`sendChatMessage`, `retryChatMessage`, 5초 타임아웃)을 앞당겨 넣었다. 2.3에는 UI만 남는다.
+- `upsertRoom`은 방 생성과 함께 2.2에서 넣는다.
+
 **작업**:
 
 1. **타입 정의** (45분)
@@ -192,7 +199,7 @@ npm run dev
    - `src/components/chat/ChatRoom.tsx` (조립)
    - `src/app/(authed)/rooms/[id]/page.tsx`
 
-10. **Optimistic UI** (1시간)
+10. **Optimistic UI** (1시간). 로직은 2.1에서 끝났다 (`src/lib/chat/connection.ts`). 남은 것은 대기, 실패 표시와 재시도 버튼 UI다
     - send_message 호출 시 즉시 store에 pending 메시지 추가
     - message_ack 수신 시 replaceClientMessage(clientMessageId, serverId)
     - 5초 내 ack 없으면 status: 'failed' + 재시도 버튼
