@@ -79,12 +79,14 @@ The server closes with `1008` (POLICY_VIOLATION) for five different causes (serv
 
 ## R5. CSP + Security
 
-- Strict CSP in `next.config.ts` `headers()`:
+- Strict CSP built per request by `src/proxy.ts` (policy in `src/lib/csp.ts`), never as a static header in `next.config.ts`:
   - `default-src 'self'`
-  - `script-src 'self'` (no inline, no eval)
-  - `style-src 'self' 'unsafe-inline'` (Tailwind requires inline)
+  - `script-src 'self' 'nonce-<per request>' 'strict-dynamic'`: no `'unsafe-inline'`, and `'unsafe-eval'` in development only (React needs it there). App Router pages carry inline bootstrap scripts, so `script-src 'self'` alone blocks hydration (it shipped that way from Phase 1.1 until 2026-10-25).
+  - Next reads the nonce from the request's CSP header and stamps it on its scripts, so every page must render per request: the root layout awaits `connection()`. Keep it.
+  - `style-src 'self' 'unsafe-inline'` with no nonce: a nonce would make browsers ignore `'unsafe-inline'` and block React's `style` attributes.
   - `connect-src 'self' ${NEXT_PUBLIC_API_URL} ${NEXT_PUBLIC_WS_URL}`
-  - `frame-ancestors 'none'`
+  - `frame-ancestors 'none'`, `base-uri 'self'`, `form-action 'self'`
+- Verify CSP changes in a real browser (`.claude/launch.json` has a dev and a prod config for the browser pane): no console CSP errors, and the login form shows its client-side validation on an empty submit. Unit tests and `next build` cannot see a blocked script.
 - `dangerouslySetInnerHTML` is **forbidden**. CSP blocks it anyway.
 - `.env.local` must not be committed (in `.gitignore`). `.env.example` IS committed (whitelisted).
 

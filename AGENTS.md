@@ -29,7 +29,7 @@ When in doubt about an API, check `node_modules/next/dist/docs/` or run `npm ls 
 3. **fetch() must go through `src/lib/api/client.ts`.** Direct `fetch()` calls bypass the single-flight refresh and break 401 handling.
 4. **`clientMessageId` = `crypto.randomUUID()`** (client only — wrap in `typeof window !== 'undefined'` for SSR safety). Used as backend idempotency key.
 5. **Refresh failure → immediate logout + redirect.** Never silently retry beyond once. Clear localStorage + push to `/login`.
-6. **CSP headers in `next.config.ts`** — strict policy. No inline scripts, no eval, `connect-src` allowlists API + WS URLs only.
+6. **CSP comes from `src/proxy.ts` with a per-request nonce** (`src/lib/csp.ts`). No `'unsafe-inline'` scripts, no eval outside development, `connect-src` allowlists API + WS URLs only. Every page renders per request so Next can stamp the nonce (root layout awaits `connection()`).
 7. **Dark mode**: `<html className="dark">` fixed in `layout.tsx`. Use Tailwind v4 `@custom-variant dark (&:where(.dark, .dark *));` in `globals.css` for class-based dark mode.
 8. **Server vs Client**: landing (`/`) is RSC; everything under `(authed)/`, `(public)/auth/*`, and any page using hooks is `'use client'`.
 9. **Naming**: PascalCase for components, camelCase for utils/hooks. zod schemas live in `src/lib/api/<domain>.ts` next to the functions.

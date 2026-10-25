@@ -48,7 +48,7 @@ GeekChat v2 프론트엔드 개발 순서. 새 세션이 첫 commit부터 배포
    - `src/app/layout.tsx`에 `<html lang="ko" className="dark">` + `<Toaster />`
    - `src/app/globals.css`에 다크모드 변수
    - `src/lib/env.ts` (검증 + export)
-   - `next.config.ts`에 CSP 헤더 (ARCHITECTURE.md §6)
+   - CSP 헤더 (ARCHITECTURE.md §6). 2026-10-25부터 `next.config.ts`가 아니라 `src/proxy.ts`가 요청마다 nonce를 넣어 만든다
 
 3. **Storage + API client** (45분)
    - `src/lib/auth/storage.ts` (localStorage get/set/clear)

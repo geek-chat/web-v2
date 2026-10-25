@@ -257,34 +257,23 @@ NEXT_PUBLIC_WS_URL=ws://localhost:8080/ws
 
 ## 6. 보안 (CSP)
 
-`next.config.ts`에 strict CSP:
-```typescript
-async headers() {
-  return [
-    {
-      source: '/:path*',
-      headers: [
-        {
-          key: 'Content-Security-Policy',
-          value: [
-            "default-src 'self'",
-            "script-src 'self'",
-            "style-src 'self' 'unsafe-inline'",
-            `connect-src 'self' ${process.env.NEXT_PUBLIC_API_URL} ${process.env.NEXT_PUBLIC_WS_URL}`,
-            "img-src 'self' data: https:",
-            "frame-ancestors 'none'",
-          ].join('; '),
-        },
-      ],
-    },
-  ]
-}
+CSP는 `src/proxy.ts`가 요청마다 만들어 응답과 전달 요청에 같이 싣는다. 정책 조립은 `src/lib/csp.ts`이고 규칙 정본은 `.claude/RULES.md` R5다.
+
+```
+default-src 'self'
+script-src 'self' 'nonce-<요청마다 새 값>' 'strict-dynamic'   (개발 모드에만 'unsafe-eval' 추가)
+style-src 'self' 'unsafe-inline'
+font-src 'self' data:
+connect-src 'self' <NEXT_PUBLIC_API_URL> <NEXT_PUBLIC_WS_URL>
+img-src 'self' data: https:
+frame-ancestors 'none'; base-uri 'self'; form-action 'self'
 ```
 
-- 인라인 스크립트 금지
-- eval 금지
-- 사용자 입력은 React가 자동 escape — `dangerouslySetInnerHTML` 절대 금지
-- localStorage XSS 위험 보완
+- App Router 페이지에는 Next가 넣는 인라인 부트스트랩 스크립트가 있다. 그래서 `script-src 'self'`만 두면 hydration이 막힌다. 2026-10-25 운영 배포에서 처음 확인했고, Phase 1.1부터 있던 문제다.
+- Next는 렌더링할 때 요청의 CSP 헤더에서 nonce를 읽어 자기 스크립트에 모두 붙인다. 그래서 모든 페이지가 요청 시점에 렌더링돼야 하고, 루트 레이아웃이 `await connection()`을 한다. 빌드 출력에서 모든 경로가 `ƒ`(동적)로 나온다.
+- `style-src`에는 nonce를 넣지 않는다. nonce가 있으면 브라우저가 `'unsafe-inline'`을 무시해서 React의 `style` 속성이 막힌다.
+- `X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy`는 그대로 `next.config.ts`의 `headers()`에 있다.
+- 사용자 입력은 React가 자동 escape한다. `dangerouslySetInnerHTML`은 금지한다. localStorage 토큰의 XSS 위험을 CSP가 보완한다.
 
 ---
 

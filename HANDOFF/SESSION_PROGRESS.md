@@ -64,6 +64,19 @@ Phase 1 결과: 가입과 로그인, single-flight 토큰 갱신, OAuth 콜백 4
 
 리뷰 반영(`df2f4f0`) 뒤에는 27개 파일, 182개 테스트와 tsc, lint, build가 모두 exit 0이다. 기존 테스트 케이스는 고치지 않았고, 새 케이스는 파일 끝에 붙이거나 새 파일로 썼다. 계정 확인과 tombstone을 일부러 빼 보니 새 테스트가 각각 실패했다.
 
+### 배포 후 발견: CSP가 hydration을 막음 (2026-10-25)
+
+Vercel에 처음 올린 운영 페이지(`2571ae8`)를 브라우저로 열자, CSP `script-src 'self'`가 Next의 인라인 스크립트 6개를 막아 hydration이 되지 않았다(콘솔: `Executing inline script violates ... 'script-src 'self''`, `Error: Connection closed.`). Phase 1.1(`ea0f041`)부터 있던 설정이다. 지금까지 검증이 test, tsc, lint, build뿐이고 브라우저에서 띄운 적이 없어서 드러나지 않았다. 개발 서버도 같은 이유로 막혀 있었다.
+
+사용자가 "nonce + proxy.ts"를 골랐다. `src/proxy.ts`가 요청마다 nonce를 넣은 CSP를 만들고, 루트 레이아웃이 `await connection()`으로 모든 페이지를 동적 렌더링한다. 근거는 `node_modules/next/dist/docs/01-app/02-guides/content-security-policy.md`의 "Nonces" 절이다. 브라우저에서 확인한 결과는 다음과 같다(앱 브라우저, `.claude/launch.json`).
+
+| 환경 | 확인 |
+|---|---|
+| `next start` (운영 빌드) | 콘솔 오류 0. 빈 로그인 폼을 제출하면 "사용자명을 입력하세요"가 뜨고 주소가 그대로다(hydration 됨). `<script>` 19개 모두 응답 헤더와 같은 nonce |
+| `next dev` | 콘솔 오류 0. 같은 검증 문구가 뜬다 |
+
+`style-src 'unsafe-inline'` 재평가(1-bis의 LOW)도 이것으로 정리했다. nonce를 넣으면 브라우저가 `'unsafe-inline'`을 무시해 React의 `style` 속성이 막히므로 그대로 둔다.
+
 ### 독립 리뷰 (Phase 2.1, 2026-10-25)
 
 판정은 REQUEST CHANGES였고 HIGH 1, MEDIUM 4, LOW 6건이었다. 서버 쪽 주장은 `07372dd` 코드로 다시 확인했다.
@@ -268,6 +281,8 @@ npm run dev
 # Ctrl+C로 종료
 ```
 
+앱 브라우저로 볼 때는 `.claude/launch.json`의 `web-v2 dev`(또는 `npm run build` 뒤 `web-v2 prod`)를 쓴다. 화면을 바꿨으면 브라우저 콘솔에 CSP 오류가 없는지와, 빈 로그인 폼 제출 때 검증 문구가 뜨는지(hydration)를 확인한다. 단위 테스트와 빌드로는 막힌 스크립트를 잡지 못한다.
+
 읽을 문서 (Phase 2 기준, 총 ~30분):
 1. **이 파일**, 특히 "2026-10-25 Phase 1.2 결과"와 "2026-10-24 세션 간 협업 결과" (5분)
 2. **`.claude/RULES.md`** R2 (WS 처리 정본), R6 (낙관적 UI) (10분)
@@ -306,7 +321,7 @@ curl -I http://localhost:3000 | grep -i 'content-security'
 |---|---|---|
 | MEDIUM | `/auth/me` 일시 실패 시 "로그아웃 화면 + 토큰 남음" | ✅ `38fede8` (`offline` 상태와 재시도) |
 | LOW | 콜백 페이지가 hash 지우기를 빠뜨리지 않게 강제 | ✅ `8fb02fc` (`useOAuthHash` 훅. 순수 함수 대신 훅으로 강제한 이유는 그 커밋 메시지 참고) |
-| LOW | `next.config.ts`의 `style-src 'unsafe-inline'` 재평가 | **남음**. Sonner가 인라인 스타일을 쓰는지 브라우저에서 확인해야 한다 |
+| LOW | `next.config.ts`의 `style-src 'unsafe-inline'` 재평가 | ✅ 유지하기로 정리 (2026-10-25). CSP는 이제 `src/proxy.ts`가 만들고, `style-src`에 nonce를 넣으면 React `style` 속성이 막힌다. 위 "배포 후 발견" 참고 |
 | LOW | `devLogin` 운영 빌드 차단 | ✅ `8fb02fc` |
 | NIT | AppBoot의 `console.error` | ✅ 사라짐. 로깅 추상화(Sentry 등)는 운영 배포 때 따로 정한다 |
 | NIT | `tError` 키 조회를 허용 목록으로 | ✅ `tError`를 없앴고 (`941c43b`), 콜백 에러 코드와 제공자 이름은 허용 목록으로 바꿨다 (`0f8f0dc`) |
@@ -346,7 +361,8 @@ R2의 1008 분기는 바뀌지 않는다. PR #11에서도 close는 `reject`의 `
 | D1: Expo 앱을 지금 낼지, 웹 → PWA → Expo 순서를 따를지 | 사용자 결정 대기. `MOBILE_STRATEGY.md`는 이 결정 전에 쓴 초안이다 |
 | server-v2 PR #11 | ✅ 머지됨 (`07372dd`). 위 "다음 세션" 2번에서 문서에 반영함 |
 | server-v2 PR #12 (S3, S4 문서) | 열림. web-v2 코드에는 영향 없음 |
-| `style-src 'unsafe-inline'` | 남은 LOW. 브라우저 확인 필요 |
+| `style-src 'unsafe-inline'` | ✅ 유지로 정리 (2026-10-25, 위 "배포 후 발견") |
+| CSP가 hydration을 막음 | ✅ nonce + `src/proxy.ts`로 고침 (사용자 선택, 위 "배포 후 발견") |
 | 리뷰 MEDIUM: 콜백 링크 출처 확인 | ✅ web-v2 쪽은 `d0a9116` (사용자가 "둘 다" 선택). 서버 쪽 보완은 사용자가 따로 처리 |
 | S8, S9 서버 보안 항목 | 사용자가 처리 담당을 정함. 운영 배포 전 처리 권장 |
 | 리뷰 LOW-2: Next canonical URL에 hash 잔류 | 남김. 위 "코드 리뷰" 절의 수정 후보를 dev에서 실측한 뒤 적용 |
