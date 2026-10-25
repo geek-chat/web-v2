@@ -9,6 +9,7 @@ import { useUserSearch } from "@/hooks/useUserSearch";
 import { Avatar } from "@/components/ui/Avatar";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
+import { Select } from "@/components/ui/Select";
 import { useRoomsStore } from "@/store/rooms";
 import { t } from "@/i18n";
 
@@ -116,11 +117,10 @@ export function CreateRoomForm() {
       />
       <label className="flex flex-col gap-1 text-sm">
         <span>{t("rooms.create.ttl")}</span>
-        <select
+        <Select
           value={ttl}
           onChange={(e) => setTtl(e.target.value === "none" ? "none" : (Number(e.target.value) as Ttl))}
           disabled={!isGroup}
-          className="h-10 rounded-md border border-border bg-background px-3 disabled:opacity-50"
         >
           <option value="none">{t("rooms.create.ttl.none")}</option>
           {ROOM_TTL_HOURS.map((hours) => (
@@ -128,7 +128,7 @@ export function CreateRoomForm() {
               {t(`rooms.create.ttl.${hours}`)}
             </option>
           ))}
-        </select>
+        </Select>
         {!isGroup && <span className="text-xs text-muted-foreground">{t("rooms.create.ttlHint")}</span>}
       </label>
       {error && (

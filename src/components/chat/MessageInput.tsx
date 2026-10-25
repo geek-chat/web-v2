@@ -2,6 +2,8 @@
 
 import { useState, type FormEvent, type KeyboardEvent } from "react";
 import { Button } from "@/components/ui/Button";
+import { Select } from "@/components/ui/Select";
+import { Textarea } from "@/components/ui/Textarea";
 import { t } from "@/i18n";
 
 /** Disappearing-message lifetimes the UI offers (WEBSOCKET.md §3.1); the server does not check the value. */
@@ -43,19 +45,19 @@ export function MessageInput({ onSend, onTyping }: MessageInputProps) {
 
   return (
     <form onSubmit={onSubmit} className="flex items-end gap-2 border-t border-border p-3">
-      <select
+      <Select
         aria-label={t("chat.input.ttl")}
         value={ttl}
         onChange={(e) => setTtl(Number(e.target.value) as Ttl)}
-        className="h-10 shrink-0 rounded-md border border-border bg-background px-2 text-sm"
+        className="shrink-0"
       >
         {MESSAGE_TTL_SECONDS.map((seconds) => (
           <option key={seconds} value={seconds}>
             {t(`chat.ttl.${seconds}`)}
           </option>
         ))}
-      </select>
-      <textarea
+      </Select>
+      <Textarea
         aria-label={t("chat.input.label")}
         placeholder={t("chat.input.placeholder")}
         rows={1}
@@ -65,7 +67,7 @@ export function MessageInput({ onSend, onTyping }: MessageInputProps) {
           if (e.target.value.trim()) onTyping();
         }}
         onKeyDown={onKeyDown}
-        className="max-h-32 min-h-10 flex-1 resize-none rounded-md border border-border bg-background px-3 py-2 text-sm"
+        className="max-h-32 min-h-10 flex-1 resize-none"
       />
       <Button type="submit" disabled={!text.trim()}>
         {t("chat.input.send")}

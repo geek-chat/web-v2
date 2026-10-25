@@ -1,5 +1,6 @@
 "use client";
 import { forwardRef, useId, type InputHTMLAttributes } from "react";
+import { CONTROL, CONTROL_HEIGHT } from "./control";
 
 interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
   label?: string;
@@ -18,10 +19,9 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
   if (error) describedBy.push(`${inputId}-error`);
 
   const inputClasses = [
-    "h-10 w-full rounded-md border bg-background px-3 text-sm",
-    "placeholder:text-muted-foreground",
-    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background",
-    "disabled:cursor-not-allowed disabled:opacity-50",
+    CONTROL,
+    CONTROL_HEIGHT,
+    "w-full px-3",
     error ? "border-destructive" : "border-border",
     className,
   ].join(" ");
