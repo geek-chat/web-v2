@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { connection } from "next/server";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Toaster } from "sonner";
 import AppBoot from "@/components/AppBoot";
@@ -20,11 +21,14 @@ export const metadata: Metadata = {
   description: "프라이버시 우선 메신저 — 개발자 친화적 채팅",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // Render every page per request: the CSP nonce from src/proxy.ts can only be
+  // stamped on Next's scripts at request time (RULES.md R5).
+  await connection();
   return (
     <html
       lang="ko"
