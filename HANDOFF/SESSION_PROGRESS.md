@@ -81,6 +81,16 @@ Phase 1 결과: 가입과 로그인, single-flight 토큰 갱신, OAuth 콜백 4
 
 ---
 
+## 2026-10-25 운영 연결 뒤
+
+| 항목 | 내용 |
+|---|---|
+| 운영 연결 | Vercel Production env를 Render(server-v2)로 바꾸고 재배포. 사용자가 Naver 로그인과 채팅을 운영에서 확인했다. Google은 S17로 막혀 있다 |
+| 버튼 커서와 hover (`2c618bd`) | Tailwind v4 preflight는 버튼에 기본 화살표 커서를 둔다. `globals.css` base 층에서 활성 `button`, `[role=button]`, `select`에 pointer를 준다. hover는 활성 버튼에만, 눈에 띄는 색으로(primary는 `--primary-hover`). 네이버 버튼이 variant의 회색으로 그려지던 버그도 고쳤다(같은 속성 유틸리티는 이름순이라 `bg-muted`가 이김, `!`로 덮어씀). 운영에서 계산값 확인 |
+| server-v2와 협업 | 사용자 지시(2026-10-25)로 server-v2 작업은 "Migrate GeekChat server to Kotlin Spring Boot" 세션이 맡는다. 서버 문제는 그 세션에 SendMessage로 넘기고, 이 저장소에서는 server-v2를 고치지 않는다. 넘긴 것: S17, S10, S16(상세는 메시지에만), S11~S15 |
+
+---
+
 ## 2026-10-25 Phase 2.2 결과
 
 ### 커밋
@@ -303,13 +313,13 @@ LOW-2 수정 후보 (미실측): 지금처럼 즉시 지운 뒤 `queueMicrotask`
 | S6 | server-v2 `SpringDataMessageRepository.findByRoomIdAfter` | 메시지 cursor 페이징에 id 보조 정렬이 없어서, 같은 `createdAt`을 가진 메시지가 페이지 경계에서 빠질 수 있다 (가능성 낮음) |
 | S8, S9 | server-v2 인증 | 보안 항목 2건. 2026-10-25에 사용자에게 직접 보고했다. 이 저장소는 공개라서 고쳐질 때까지 상세는 적지 않는다. **운영 배포 전 처리 권장** |
 | S16 | server-v2 | 보안 항목 1건. 2026-10-25에 사용자에게 직접 보고했다. 같은 이유로 상세는 적지 않는다. **운영 배포 전 처리 권장** |
-| S10 | server-v2 `SecurityConfig.securityFilterChain` | `/error`가 허용 목록에 없고 entry point가 본문 없는 401을 돌려준다. 그래서 공개 엔드포인트의 bean validation 실패(400)가 401로 바뀌어 보일 수 있다 (설정 기준, 실측 전). web-v2는 서버와 같은 검증을 폼에서 먼저 해서 영향이 작다 |
+| S10 | server-v2 `SecurityConfig.securityFilterChain` | `/error`가 허용 목록에 없고 entry point가 본문 없는 401을 돌려준다. 그래서 공개 엔드포인트의 bean validation 실패(400)가 401로 바뀌어 보일 수 있다 (설정 기준, 실측 전). web-v2는 서버와 같은 검증을 폼에서 먼저 해서 영향이 작다. 2026-10-25 운영에서 실측(`GET /auth/login`이 405 대신 401). server-v2#14가 고치며 병합 대기 중이고, 병합 뒤 400, 404, 405는 `{statusCode, message, error}`, 500과 403은 Spring 기본 본문으로 나온다. web-v2는 바꿀 것이 없음을 코드로 확인했다(`readErrorBody`가 계약 밖 본문을 버림) |
 | S11 | server-v2 `ChatEventListener.onMessageExpired`, `MessageExpirationScheduler` | 스케줄러가 `@Transactional` 안에서 이벤트를 내고 리스너는 `@Async @EventListener`라서, `message_expired`가 삭제 커밋보다 먼저 나갈 수 있다. 그 사이 REST가 지운 메시지를 돌려준다. web-v2는 tombstone으로 막았다. `AFTER_COMMIT`으로 바꾸면 근본 해결 |
 | S12 | server-v2 `MessageResponse` (`MessageDto.kt`) | `clientMessageId`가 없어서 ack를 잃은 메시지를 REST 행과 맞출 수 없다. failed 행과 서버 행이 함께 보인다 |
 | S13 | server-v2 `ChatWebSocketHandler.afterConnectionEstablished` | 연결을 받아들여도 아무 프레임을 보내지 않아서, 클라이언트는 1초 동안 거부가 없으면 수락으로 본다. `connected` 같은 프레임이 있으면 추정할 필요가 없다 |
 | S14 | server-v2 websocket 모듈 | 로그아웃과 탈퇴 때 그 사용자의 소켓을 닫지 않는다(닫는 곳은 `reject` 하나). heartbeat 설정도 없어서 끊긴 연결이 열린 것처럼 남을 수 있다. 배포 환경 프록시의 idle timeout도 확인이 필요하다 |
 | S15 | server-v2 `RoomMemberResponse`, 방 목록 API | 멤버의 읽음 시각(`lastReadAt`)을 주는 REST가 없다. 새로 연 화면은 접속 뒤 `read_update`가 올 때까지 읽음 표시를 그릴 수 없다 |
-| S17 | server-v2 `AuthController.googleStart` | `scope`에 공백이 든 `"openid email profile"`을 넣고 `.build(true)`로 만들어서 `IllegalArgumentException`이 난다. `/error`가 막혀 있어서(S10) 응답은 본문 없는 401이다. 2026-10-25 Render에서 `/auth/google`은 401, `/auth/naver`는 302였고, Spring 7.0.9 jshell로 예외를 재현했다. `.encode().build()`로 바꾸면 생성된다. 이 경로의 테스트가 없다. **Google 로그인이 막힘** |
+| S17 | server-v2 `AuthController.googleStart` | `scope`에 공백이 든 `"openid email profile"`을 넣고 `.build(true)`로 만들어서 `IllegalArgumentException`이 난다. `/error`가 막혀 있어서(S10) 응답은 본문 없는 401이다. 2026-10-25 Render에서 `/auth/google`은 401, `/auth/naver`는 302였고, Spring 7.0.9 jshell로 예외를 재현했다. `.encode().build()`로 바꾸면 생성된다. 이 경로의 테스트가 없다. **Google 로그인이 막힘**. server-v2 세션이 고치고 MockMvc 테스트를 붙였다(브랜치 `fix/google-oauth-start`), 배포는 사용자 승인 대기. 배포 뒤 302와 Location은 이 저장소 세션이 curl로 보고, Google 로그인 끝까지는 사용자가 확인한다 |
 | S7 | server-v2 `ChatErrorMapping.kt` | 에러 본문의 `error`가 HTTP reason phrase라서 같은 상태 코드를 쓰는 도메인 에러(예: 가입 409의 유저네임과 이메일)를 구분하려면 영어 메시지 앞부분을 봐야 한다. 안정적인 `code` 필드가 있으면 클라이언트가 메시지 문구에 기대지 않아도 된다 |
 | T1 | `geek-chat-web` main `559d170` | v2가 리다이렉트하는 `/auth/oauth-link`, `/auth/oauth-complete`, `/auth/error` 라우트 파일이 없음. v1 연동은 `/auth/success#linking_required=true` 형식 (`app/auth/success.tsx:18-33`). web-internal 세션에 공유함. 10-25 기준 v1 `feat/v2-transport` 브랜치(`76cb0b1`)에서 처리 중이고 아직 머지 전 |
 
