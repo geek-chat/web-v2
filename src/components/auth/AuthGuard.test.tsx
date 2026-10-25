@@ -76,4 +76,14 @@ describe("AuthGuard", () => {
 
     expect(screen.getByText("secret")).toBeDefined();
   });
+
+  it("sends the user to /login when the session ends, which logout and withdraw rely on", () => {
+    setStatus("authenticated");
+    renderGuard();
+
+    act(() => setStatus("unauthenticated"));
+
+    expect(nav.replace).toHaveBeenCalledWith("/login");
+    expect(screen.queryByText("secret")).toBeNull();
+  });
 });

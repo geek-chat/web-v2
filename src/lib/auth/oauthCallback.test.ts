@@ -1,6 +1,8 @@
-import { StrictMode } from "react";
-import { describe, expect, it } from "vitest";
-import { renderHook } from "@testing-library/react";
+import { StrictMode, createElement } from "react";
+import { hydrateRoot } from "react-dom/client";
+import { renderToString } from "react-dom/server";
+import { describe, expect, it, vi } from "vitest";
+import { act, renderHook } from "@testing-library/react";
 import { clearHash, parseHash } from "./oauthCallback";
 import { useOAuthHash } from "./useOAuthHash";
 
@@ -50,5 +52,31 @@ describe("useOAuthHash", () => {
 
     expect(result.current).toEqual({ access_token: "a", refresh_token: "b" });
     expect(window.location.hash).toBe("");
+  });
+
+  // renderHook is a plain client render; this exercises the real server HTML +
+  // hydrateRoot path that Next takes for a prerendered callback page.
+  it("matches the server HTML while hydrating, then exposes the fragment", async () => {
+    go("/auth/success#access_token=a&refresh_token=b");
+    function Probe() {
+      const hash = useOAuthHash();
+      return createElement("p", null, hash ? `token:${hash.access_token}` : "waiting");
+    }
+    const container = document.createElement("div");
+    container.innerHTML = renderToString(createElement(Probe));
+    document.body.appendChild(container);
+    expect(container.textContent).toBe("waiting");
+    const onRecoverableError = vi.fn(); // React reports hydration mismatches here
+
+    let root: ReturnType<typeof hydrateRoot> | undefined;
+    await act(async () => {
+      root = hydrateRoot(container, createElement(Probe), { onRecoverableError });
+    });
+
+    expect(container.textContent).toBe("token:a");
+    expect(onRecoverableError).not.toHaveBeenCalled();
+    expect(window.location.hash).toBe("");
+    act(() => root?.unmount());
+    container.remove();
   });
 });
