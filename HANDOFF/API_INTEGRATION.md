@@ -237,7 +237,7 @@ wss://api.<domain>/ws?token=<access_token>      // prod
 
 ### 에러 코드
 
-앞의 다섯 개(`NO_TOKEN`부터 `MAX_CONNECTIONS`까지)는 연결 직후 검사에서 나온다. 서버는 이 `error`를 보낸 직후 close code 1008로 연결을 끊는다 (server-v2 `ChatWebSocketHandler.kt:36-65`). 1008만 봐서는 원인을 알 수 없으니 직전 `error.code`로 나눈다. 처리 규칙 정본은 `.claude/RULES.md` R2다.
+앞의 다섯 개(`NO_TOKEN`부터 `MAX_CONNECTIONS`까지)는 연결 직후 검사에서 나온다. 서버는 이 `error`를 보낸 직후 close code 1008로 연결을 끊는다 (server-v2 `ChatWebSocketHandler.reject`). 1008만 봐서는 원인을 알 수 없으니 직전 `error.code`로 나눈다. 처리 규칙 정본은 `.claude/RULES.md` R2다.
 
 | code | 의미 | 클라 처리 |
 |---|---|---|
@@ -249,8 +249,8 @@ wss://api.<domain>/ws?token=<access_token>      // prod
 | `NOT_AUTHENTICATED` | SecurityContext 없음 | 재연결 |
 | `INVALID_FORMAT` | JSON 파싱 실패 | 클라 버그 — 로그 |
 | `UNKNOWN_EVENT` | 미지의 type | 클라 버그 |
-| `INVALID_DATA` | 필수 필드 누락 | 클라 버그 |
-| `SEND_FAILED` | sendMessage 비즈니스 실패 | 사용자에게 보여줌 |
+| `INVALID_DATA` | 필수 필드 누락 | 클라 버그. 요청에 `clientMessageId`가 있었으면 함께 오니 그 대기 메시지를 failed로 |
+| `SEND_FAILED` | sendMessage 비즈니스 실패 (예: 방 멤버 아님) | `clientMessageId`가 항상 함께 온다. 그 대기 메시지를 바로 failed로 바꾸고 사용자에게 보여줌 (RULES.md R6) |
 
 ### WebSocket 클라이언트 클래스 (권장 구조)
 
@@ -258,7 +258,7 @@ wss://api.<domain>/ws?token=<access_token>      // prod
 // src/lib/ws/client.ts  (재연결 규칙 정본: .claude/RULES.md R2)
 type Handler = (data: any) => void
 
-const MIN_RECONNECT_MS = 2000 // 서버 MIN_CONNECTION_INTERVAL_MS (WebSocketSessionManager.kt:17)
+const MIN_RECONNECT_MS = 2000 // 서버 WebSocketSessionManager.MIN_CONNECTION_INTERVAL_MS
 const MAX_RECONNECT_MS = 30000
 const STABLE_AFTER_MS = 10000 // 이만큼 열려 있거나 error가 아닌 메시지가 오면 정상 연결로 본다
 

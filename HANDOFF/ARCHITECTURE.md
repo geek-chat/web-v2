@@ -242,8 +242,8 @@ NEXT_PUBLIC_WS_URL=ws://localhost:8080/ws
 
 ## 5. CORS / 배포
 
-- **REST CORS**: 백엔드 `SecurityConfig.kt:58-61`이 `FRONTEND_URL`과 `frontendOriginPatterns`를 함께 허용한다. docker-compose는 `https://*.vercel.app`을 기본으로 넣어서 preview deploy도 REST는 통과한다. Render는 다르다. `render.yaml`에 패턴 키가 없고 기본값이 빈 목록이라(`AppProperties.kt:11`), 대시보드에서 `APP_FRONTEND_ORIGIN_PATTERNS`를 따로 넣지 않으면 REST도 `FRONTEND_URL` 하나만 허용한다.
-- **WS는 다르다**: 핸드셰이크 Origin은 `FRONTEND_URL` 하나만 허용한다 (`WebSocketConfig.kt:20`). preview deploy에서는 WS가 열리지 않는다.
+- **REST CORS**: 백엔드 `SecurityConfig.corsConfigurationSource`가 `FRONTEND_URL`과 `frontendOriginPatterns`를 함께 허용한다. docker-compose는 `https://*.vercel.app`을 기본으로 넣어서 preview deploy도 REST는 통과한다. Render는 다르다. `render.yaml`에 패턴 키가 없고 기본값이 빈 목록이라(`AppProperties.frontendOriginPatterns`), 대시보드에서 `APP_FRONTEND_ORIGIN_PATTERNS`를 따로 넣지 않으면 REST도 `FRONTEND_URL` 하나만 허용한다.
+- **WS는 다르다**: 핸드셰이크 Origin은 `FRONTEND_URL` 하나만 허용한다 (`WebSocketConfig`의 `setAllowedOrigins(appProperties.frontendUrl)`). preview deploy에서는 WS가 열리지 않는다.
 - **OAuth 리다이렉트**도 `FRONTEND_URL` 하나로 간다 (`AuthController.kt:100-126`). 그래서 프론트를 v1 Expo에서 web-v2로 바꿀 때 백엔드 `FRONTEND_URL`도 같이 바꿔야 하고, 서버를 고치지 않는 한 두 프론트가 동시에 OAuth와 WS를 쓸 수 없다.
 - **백엔드 배포 대상**: Render 무료(Docker) + Supabase Postgres (server-v2 `docs/MIGRATION.md` Phase 8). 서비스 URL은 아직 없다. Render 무료는 15분 동안 요청이 없으면 잠들어서 첫 요청이 느리다.
 - Vercel 빌드 자동 (`next build`). Output `.next` 자동.

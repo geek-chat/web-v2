@@ -96,16 +96,20 @@ LOW-2 수정 후보 (미실측): 지금처럼 즉시 지운 뒤 `queueMicrotask`
 
 2026-10-25에 server-v2 `a0995cc`에서 다시 봤다. 아래에 인용한 Kotlin 파일은 바뀌지 않았다. 문서만 바뀌었는데, `API.md`가 OAuth 에러 코드 4종을 적게 됐고 `WEBSOCKET.md`에서는 코드에 없던 `AUTH_ERROR` 행이 빠졌다.
 
+같은 날 PR #11 머지(`07372dd`) 뒤에 WS 항목을 다시 봤다. 바뀐 Kotlin 파일은 websocket 모듈뿐이라(`git diff --stat a0995cc 07372dd`) 인증 항목의 행 번호는 그대로 맞다. 행이 자주 밀리는 server-v2 인용은 클래스와 함수 이름으로 바꿨다.
+
 | 항목 | 근거 | web-v2 영향 |
 |---|---|---|
 | 5월 이후 문서 변경은 API.md 2건(`b4ba708` HATEOAS `_links`, `a389f0c` 관리자 AI)뿐, WEBSOCKET.md 0건 | `git log 96aa85c..HEAD` | 단일 방 응답에 `_links`가 붙음. zod `z.object`는 모르는 키를 버리므로 깨지지 않음 |
 | 인증 응답과 OAuth hash 형식 그대로 | `AuthController.kt:112-126` | Phase 1.2 콜백 설계 유효 |
 | `/auth/error?error=` 값은 4종: `oauth_cancelled`, `missing_params`, `invalid_state`, `oauth_failed` | `AuthController.kt:100-112` | 에러 페이지가 4종을 모두 매핑해야 함 |
 | JWT에 role 클레임 추가 | 커밋 `035ad30` | 영향 없음 (`jwt.ts:49`는 `exp`만 읽음) |
-| WS 연결 거부 5가지(NO_TOKEN, TOKEN_EXPIRED, INVALID_TOKEN, RATE_LIMITED, MAX_CONNECTIONS)가 모두 close 1008 | `ChatWebSocketHandler.kt:36-65` | 1008은 직전 `error.code`로 분기. 정본은 `.claude/RULES.md` R2 |
-| 연결 상한 3, 재연결 최소 간격 2초 | `WebSocketSessionManager.kt:16-17` | 백오프는 2초부터 |
-| WS Origin과 OAuth 리다이렉트 대상이 `FRONTEND_URL` 하나 | `WebSocketConfig.kt:20`, `AuthController.kt:100-126` | preview 배포에서 WS 불가. v1 Expo에서 web-v2로 바꿀 때 `FRONTEND_URL`도 같이 바꿔야 함 |
-| Render에서는 REST CORS도 `FRONTEND_URL` 하나 | `AppProperties.kt:11` 기본값이 빈 목록, `render.yaml`(a0995cc)에 패턴 키 없음 | preview에서 REST를 쓰려면 Render에 `APP_FRONTEND_ORIGIN_PATTERNS`를 따로 넣어야 함 |
+| WS 연결 거부 5가지(NO_TOKEN, TOKEN_EXPIRED, INVALID_TOKEN, RATE_LIMITED, MAX_CONNECTIONS)가 모두 close 1008 | `ChatWebSocketHandler.afterConnectionEstablished`가 검사하고 `reject` 한 곳에서 닫는다 (`07372dd`) | 1008은 직전 `error.code`로 분기. 정본은 `.claude/RULES.md` R2 |
+| 연결 중 `error`에 `clientMessageId`가 실린다 (PR #11). `SEND_FAILED`는 항상, `INVALID_DATA`는 요청에 있었을 때 | `ChatWebSocketHandler.handleSendMessage`, `sendError`, `docs/WEBSOCKET.md` §4.9 | 대기 메시지를 바로 `failed`로. 정본은 RULES.md R6 |
+| 방 멤버가 아닌 `typing_start`는 조용히 버린다 (PR #11) | `ChatWebSocketHandler.handleTypingStart` | 에러가 오지 않으니 클라이언트가 따로 처리할 것은 없음 |
+| 연결 상한 3, 재연결 최소 간격 2초 | `WebSocketSessionManager`의 `MAX_CONNECTIONS_PER_USER`, `MIN_CONNECTION_INTERVAL_MS` | 백오프는 2초부터 |
+| WS Origin과 OAuth 리다이렉트 대상이 `FRONTEND_URL` 하나 | `WebSocketConfig`의 `setAllowedOrigins(appProperties.frontendUrl)`, `AuthController.kt:100-126` | preview 배포에서 WS 불가. v1 Expo에서 web-v2로 바꿀 때 `FRONTEND_URL`도 같이 바꿔야 함 |
+| Render에서는 REST CORS도 `FRONTEND_URL` 하나 | `AppProperties.frontendOriginPatterns` 기본값이 빈 목록, `render.yaml`(a0995cc)에 패턴 키 없음 | preview에서 REST를 쓰려면 Render에 `APP_FRONTEND_ORIGIN_PATTERNS`를 따로 넣어야 함 |
 | 배포 대상은 Render 무료 + Supabase Postgres, 아직 배포 전 | `docs/MIGRATION.md:166-175` | `connect-src`는 이미 env로 만듦 (`next.config.ts:6-7, 18`). URL이 정해지면 Vercel env만 넣으면 됨 |
 
 ### v1 세션이 알려 준 인증 함정 (web-v2 반영 상태)
@@ -132,14 +136,14 @@ LOW-2 수정 후보 (미실측): 지금처럼 즉시 지운 뒤 `queueMicrotask`
 
 | # | 위치 | 문제 |
 |---|---|---|
-| S1 | server-v2 `docs/WEBSOCKET.md:163-167` (a0995cc) | 샘플이 1008을 일괄 refresh로 안내하고, `onopen`에서 백오프를 0으로 되돌린다 |
-| S2 | server-v2 `WebSocketConfig.kt:20` | WS Origin이 `FRONTEND_URL` 하나라 preview 배포에서 WS 불가 |
-| S3 | 워크스페이스 `geek-chat/CLAUDE.md` | MySQL, 친구 클라우드, Next.js 15로 적혀 있어 낡음 |
-| S4 | server-v2 `README.md:30` | `local` 프로필을 MySQL로 설명하지만 `application-local.yml:11-14`은 PostgreSQL |
-| S5 | server-v2 `render.yaml`, `AppProperties.kt:11` | Render에서는 REST CORS도 `FRONTEND_URL` 하나만 허용한다 (패턴 기본값이 빈 목록). preview 배포는 REST도 실패한다 |
-| S6 | server-v2 `SpringDataMessageRepository.kt:22-29` | 메시지 cursor 페이징에 id 보조 정렬이 없어서, 같은 `createdAt`을 가진 메시지가 페이지 경계에서 빠질 수 있다 (가능성 낮음) |
+| S1 | server-v2 `docs/WEBSOCKET.md` §6 샘플 (`07372dd`에서도 그대로) | 샘플이 1008을 일괄 refresh로 안내하고, `onopen`에서 백오프를 0으로 되돌린다 |
+| S2 | server-v2 `WebSocketConfig` (`setAllowedOrigins`) | WS Origin이 `FRONTEND_URL` 하나라 preview 배포에서 WS 불가 |
+| S3 | 워크스페이스 `geek-chat/CLAUDE.md` | MySQL, 친구 클라우드, Next.js 15로 적혀 있어 낡음. server-v2 PR #12(`docs/sync-stale-docs`, 10-25 기준 열림)가 다룬다 |
+| S4 | server-v2 `README.md:30` | `local` 프로필을 MySQL로 설명하지만 `application-local.yml:11-14`은 PostgreSQL. PR #12가 다룬다 |
+| S5 | server-v2 `render.yaml`, `AppProperties.frontendOriginPatterns` | Render에서는 REST CORS도 `FRONTEND_URL` 하나만 허용한다 (패턴 기본값이 빈 목록). preview 배포는 REST도 실패한다 |
+| S6 | server-v2 `SpringDataMessageRepository.findByRoomIdAfter` | 메시지 cursor 페이징에 id 보조 정렬이 없어서, 같은 `createdAt`을 가진 메시지가 페이지 경계에서 빠질 수 있다 (가능성 낮음) |
 | S8, S9 | server-v2 인증 | 보안 항목 2건. 2026-10-25에 사용자에게 직접 보고했다. 이 저장소는 공개라서 고쳐질 때까지 상세는 적지 않는다. **운영 배포 전 처리 권장** |
-| S10 | server-v2 `SecurityConfig.kt:36-47` | `/error`가 허용 목록에 없고 entry point가 본문 없는 401을 돌려준다. 그래서 공개 엔드포인트의 bean validation 실패(400)가 401로 바뀌어 보일 수 있다 (설정 기준, 실측 전). web-v2는 서버와 같은 검증을 폼에서 먼저 해서 영향이 작다 |
+| S10 | server-v2 `SecurityConfig.securityFilterChain` | `/error`가 허용 목록에 없고 entry point가 본문 없는 401을 돌려준다. 그래서 공개 엔드포인트의 bean validation 실패(400)가 401로 바뀌어 보일 수 있다 (설정 기준, 실측 전). web-v2는 서버와 같은 검증을 폼에서 먼저 해서 영향이 작다 |
 | S7 | server-v2 `ChatErrorMapping.kt` | 에러 본문의 `error`가 HTTP reason phrase라서 같은 상태 코드를 쓰는 도메인 에러(예: 가입 409의 유저네임과 이메일)를 구분하려면 영어 메시지 앞부분을 봐야 한다. 안정적인 `code` 필드가 있으면 클라이언트가 메시지 문구에 기대지 않아도 된다 |
 | T1 | `geek-chat-web` main `559d170` | v2가 리다이렉트하는 `/auth/oauth-link`, `/auth/oauth-complete`, `/auth/error` 라우트 파일이 없음. v1 연동은 `/auth/success#linking_required=true` 형식 (`app/auth/success.tsx:18-33`). web-internal 세션에 공유함. 10-25 기준 v1 `feat/v2-transport` 브랜치(`76cb0b1`)에서 처리 중이고 아직 머지 전 |
 
@@ -246,13 +250,13 @@ curl -I http://localhost:3000 | grep -i 'content-security'
 | NIT | `SignupForm`의 이중 zod parse | 그대로 둠 (안전망) |
 | NIT | Button 로딩 spinner가 글자 옆에 나란히 뜸 | 그대로 둠 (UX 검토 때 결정) |
 
-### 2. server-v2 PR #11이 머지되면 (문서만)
+### 2. server-v2 PR #11 반영 ✅ (2026-10-25, 문서만)
 
-PR #11(`fix/ws-contract-gaps`)은 2026-10-25 기준 열려 있다. 머지되면 두 가지를 반영한다.
-- R6(낙관적 UI): `error`에 `clientMessageId`가 오면(`SEND_FAILED`는 항상, `INVALID_DATA`는 요청에 있었을 때) 해당 대기 메시지를 바로 `failed`로 바꾸고, 5초 ack 타임아웃은 대비책으로 남긴다.
-- R2와 이 파일의 server-v2 인용을 행 번호 대신 이름(`afterConnectionEstablished`, `MIN_CONNECTION_INTERVAL_MS`, `WEBSOCKET.md §6`)으로 바꾼다. PR #10 때문에 `WebSocketSessionManager.kt`의 상수가 이미 23-24행으로 밀렸고, #11이 `ChatWebSocketHandler.kt`와 `WEBSOCKET.md`를 또 바꾼다.
+PR #11(`fix/ws-contract-gaps`)은 `07372dd`로 머지됐고, 이 세션에서 두 가지를 반영했다.
+- R6(낙관적 UI): `error`에 `clientMessageId`가 오면 그 대기 메시지를 바로 `failed`로 바꾸고, 5초 ack 타임아웃은 대비책으로 남긴다. `API_INTEGRATION.md`의 에러 코드 표도 맞췄다.
+- R2, `API_INTEGRATION.md`, `ARCHITECTURE.md`, 이 파일의 server-v2 인용을 행 번호 대신 이름으로 바꿨다. R2에는 "연결 중에도 `error`가 오니, 재연결은 1008 직전의 `error`로만 정한다"를 더했다.
 
-R2의 1008 분기는 바뀌지 않는다. PR #11에서도 close는 `POLICY_VIOLATION` 하나이고, 1008은 연결할 때만 온다.
+R2의 1008 분기는 바뀌지 않는다. PR #11에서도 close는 `reject`의 `POLICY_VIOLATION` 하나이고, 1008은 연결할 때만 온다.
 
 ### 3. Phase 2.1: 타입과 WebSocket 클라이언트
 
@@ -275,7 +279,8 @@ R2의 1008 분기는 바뀌지 않는다. PR #11에서도 close는 `POLICY_VIOLA
 | Vitest 도입 | ✅ `a1aa484` |
 | 백엔드 서비스 URL | 없음. Supabase 생성과 Render 연결은 사용자 계정으로만 할 수 있다 (`MIGRATION.md:175`). URL이 정해지면 Vercel env(`NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_WS_URL`)와 백엔드 `FRONTEND_URL`을 함께 바꾼다 |
 | D1: Expo 앱을 지금 낼지, 웹 → PWA → Expo 순서를 따를지 | 사용자 결정 대기. `MOBILE_STRATEGY.md`는 이 결정 전에 쓴 초안이다 |
-| server-v2 PR #11 | 열림. 머지되면 위 "다음 세션" 2번 |
+| server-v2 PR #11 | ✅ 머지됨 (`07372dd`). 위 "다음 세션" 2번에서 문서에 반영함 |
+| server-v2 PR #12 (S3, S4 문서) | 열림. web-v2 코드에는 영향 없음 |
 | `style-src 'unsafe-inline'` | 남은 LOW. 브라우저 확인 필요 |
 | 리뷰 MEDIUM: 콜백 링크 출처 확인 | ✅ web-v2 쪽은 `d0a9116` (사용자가 "둘 다" 선택). 서버 쪽 보완은 사용자가 따로 처리 |
 | S8, S9 서버 보안 항목 | 사용자가 처리 담당을 정함. 운영 배포 전 처리 권장 |
@@ -299,15 +304,15 @@ R2의 1008 분기는 바뀌지 않는다. PR #11에서도 close는 `POLICY_VIOLA
 
 ### 백엔드 (참고만, 수정 절대 금지)
 
-위치: `~/Work/geek-chat/geek-chat-server-v2/` (멀티 모듈. 행 번호는 `0ccf5c2` 기준이고 `a0995cc`에서도 그대로다)
+위치: `~/Work/geek-chat/geek-chat-server-v2/` (멀티 모듈. 남은 행 번호는 `0ccf5c2` 기준이고 `07372dd`에서도 그대로다. websocket 모듈은 행이 자주 밀려서 이름으로 적는다)
 - `auth/.../presentation/web/AuthController.kt`: OAuth 콜백 리다이렉트 조립은 100-126행 (에러 4종, hash 3종)
 - `AuthDto.kt`: 모든 DTO (camelCase)
 - `ChatErrorMapping.kt`: HTTP 상태 코드 매핑
-- `websocket/.../infrastructure/config/WebSocketConfig.kt`: `/ws` 경로, 허용 Origin은 `FRONTEND_URL` 하나 (20행)
-- `websocket/.../infrastructure/WebSocketSessionManager.kt`: `MAX_CONNECTIONS_PER_USER = 3`, `MIN_CONNECTION_INTERVAL_MS = 2000L` (`7fcada6` 기준 23-24행. PR #10으로 밀렸다)
+- `websocket/.../infrastructure/config/WebSocketConfig.kt`: `/ws` 경로, 허용 Origin은 `setAllowedOrigins(appProperties.frontendUrl)` 하나
+- `websocket/.../infrastructure/WebSocketSessionManager.kt`: `MAX_CONNECTIONS_PER_USER = 3`, `MIN_CONNECTION_INTERVAL_MS = 2000L`
 - `user/.../presentation/web/UserController.kt`: `PATCH /api/users/me/username` (`{username}` 요청, `{username}` 응답)
 - `common/.../presentation/web/ChatErrorMapping.kt`: 에러 본문의 `error`는 HTTP reason phrase (S7)
-- `websocket/.../presentation/ChatWebSocketHandler.kt`: 연결 거부 5가지가 모두 close 1008 (36-65행)
+- `websocket/.../presentation/ChatWebSocketHandler.kt`: `afterConnectionEstablished`가 연결 거부 5가지를 검사하고 모두 `reject`에서 close 1008. `sendError`는 `clientMessageId`를 실을 수 있다 (PR #11)
 
 ### refresh-context 스킬
 
@@ -319,11 +324,12 @@ R2의 1008 분기는 바뀌지 않는다. PR #11에서도 close는 `POLICY_VIOLA
 ### Worktree 정보
 
 - 위치: 앱이 만든 worktree (`.claude/worktrees/<이름>`). 이름은 재활용될 때마다 바뀌니 `git rev-parse --show-toplevel`로 확인한다.
-- 브랜치: `claude/fervent-bell-35addf`. 2026-10-25에 사용자가 `2a1f19b`까지 `main`에 반영하고 push했다.
-- Phase 1.2 커밋은 이 브랜치에만 있다 (`git log 2a1f19b..HEAD`). `main` 반영과 push는 사용자가 직접 한다 (에이전트 push는 막혀 있다).
+- 브랜치: `claude/fervent-bell-35addf`. 메인 체크아웃(`~/Work/geek-chat/geek-chat-web-v2`)의 `main`에 fast-forward로 반영한 뒤 `origin`(`geek-chat/web-v2`, 공개 저장소)에 push한다.
+- 2026-10-25 세션에서는 사용자가 git 명령(병합, push 포함)을 에이전트에게 맡겼다 ("git 명령어 전부 승인할게 너가 해"). 이 승인은 그 세션 한정이라, 다음 세션에서 push하기 전에는 다시 확인받는다.
+- 공개 저장소라서 고쳐지지 않은 서버 보안 문제의 상세(S8, S9)는 문서와 커밋 메시지에 쓰지 않는다.
 
 ---
 
 ## 한 줄 요약
 
-> **web-v2는 Phase 1.1까지 구현한 상태로 보류 중이다. 재개 조건(사용자 지시 + 백엔드 URL)을 먼저 확인하고, 재개하면 환경 복구 → 1-bis → Phase 1.2 순서로 진행한다. 끝날 때 refresh-context 스킬 호출 필수.**
+> **web-v2는 Phase 1(인증)을 마쳤고 다음은 Phase 2(채팅, WebSocket)다. 환경 복구 → 기준선 확인 → Phase 2.1 순서로 진행한다. 끝날 때 refresh-context 스킬 호출 필수.**
