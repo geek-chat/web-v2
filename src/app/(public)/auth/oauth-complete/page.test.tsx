@@ -14,6 +14,7 @@ vi.mock("@/lib/api/auth", async (importOriginal) => ({
 }));
 
 import { completeOAuthSignup, me } from "@/lib/api/auth";
+import { startOAuthFlow } from "@/lib/auth/oauthFlow";
 import { useAuthStore } from "@/store/auth";
 import OAuthCompletePage from "./page";
 
@@ -26,6 +27,7 @@ beforeEach(() => {
   vi.mocked(completeOAuthSignup).mockReset();
   vi.mocked(me).mockReset().mockResolvedValue(USER);
   useAuthStore.setState({ status: "idle", user: null });
+  startOAuthFlow("google"); // the user pressed an OAuth button in this tab
 });
 
 describe("/auth/oauth-complete", () => {

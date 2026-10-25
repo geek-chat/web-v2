@@ -1,9 +1,10 @@
 import { StrictMode, createElement } from "react";
 import { hydrateRoot } from "react-dom/client";
 import { renderToString } from "react-dom/server";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { act, renderHook } from "@testing-library/react";
 import { clearHash, parseHash } from "./oauthCallback";
+import { endOAuthFlow, startOAuthFlow } from "./oauthFlow";
 import { useOAuthHash } from "./useOAuthHash";
 
 const go = (url: string) => window.history.replaceState(null, "", url);
@@ -35,6 +36,30 @@ describe("clearHash", () => {
 });
 
 describe("useOAuthHash", () => {
+  beforeEach(() => {
+    startOAuthFlow("google"); // the user pressed an OAuth button in this tab
+  });
+
+  it("treats the fragment as empty when this tab did not start an OAuth flow", () => {
+    endOAuthFlow();
+    go("/auth/success#access_token=a&refresh_token=b");
+
+    const { result } = renderHook(() => useOAuthHash());
+
+    expect(result.current).toEqual({});
+    expect(window.location.hash).toBe(""); // the crafted tokens still leave the URL
+  });
+
+  it("uses the flow mark up, so a second link in the same tab is refused", () => {
+    go("/auth/success#access_token=a&refresh_token=b");
+    renderHook(() => useOAuthHash()).unmount();
+    go("/auth/success#access_token=x&refresh_token=y");
+
+    const { result } = renderHook(() => useOAuthHash());
+
+    expect(result.current).toEqual({});
+  });
+
   it("returns the fragment and strips it from the URL", () => {
     go("/auth/success#access_token=a&refresh_token=b");
 

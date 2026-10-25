@@ -1,14 +1,20 @@
 "use client";
-import { Suspense } from "react";
+import { Suspense, useEffect } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { AuthShell } from "@/components/auth/AuthShell";
 import { Spinner } from "@/components/ui/Spinner";
+import { endOAuthFlow } from "@/lib/auth/oauthFlow";
 import { oauthErrorMessage } from "@/lib/auth/oauthText";
 import { t } from "@/i18n";
 
 /** /auth/error?error=<code>. A query string, not a fragment (AuthController.kt). */
 export default function OAuthErrorPage() {
+  // A failed flow is still a finished one; don't leave its mark for a later link.
+  useEffect(() => {
+    endOAuthFlow();
+  }, []);
+
   // useSearchParams on a prerendered route needs a Suspense boundary
   // (next docs: 01-app/03-api-reference/04-functions/use-search-params.md).
   return (

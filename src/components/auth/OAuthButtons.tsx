@@ -1,17 +1,19 @@
 "use client";
 import { Button } from "@/components/ui/Button";
-import { oauthStartUrl, type OAuthProvider } from "@/lib/api/auth";
+import type { OAuthProvider } from "@/lib/api/auth";
+import { startOAuthFlow } from "@/lib/auth/oauthFlow";
 import { t } from "@/i18n";
 
 /**
- * OAuth provider buttons. Click → full window navigation to the backend's
- * OAuth start URL. Backend handles state, redirects to provider, then
- * back to /auth/callback → /auth/{success|oauth-link|oauth-complete|error}.
+ * OAuth provider buttons. Click → mark the flow in this tab (oauthFlow.ts, so
+ * the callback pages accept only redirects from a flow started here), then
+ * full window navigation to the backend's OAuth start URL. The backend sends
+ * the provider back to /auth/callback → /auth/{success|oauth-link|oauth-complete|error}.
  */
 export function OAuthButtons({ disabled = false }: { disabled?: boolean }) {
   function start(provider: OAuthProvider) {
     if (typeof window !== "undefined") {
-      window.location.href = oauthStartUrl(provider);
+      window.location.href = startOAuthFlow(provider);
     }
   }
 

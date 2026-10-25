@@ -16,6 +16,7 @@ vi.mock("@/lib/api/auth", async (importOriginal) => ({
 }));
 
 import { completeOAuthSignup, linkProvider, me } from "@/lib/api/auth";
+import { startOAuthFlow } from "@/lib/auth/oauthFlow";
 import { useAuthStore } from "@/store/auth";
 import OAuthLinkPage from "./page";
 
@@ -29,6 +30,7 @@ beforeEach(() => {
   vi.mocked(completeOAuthSignup).mockReset();
   vi.mocked(me).mockReset().mockResolvedValue(USER);
   useAuthStore.setState({ status: "idle", user: null });
+  startOAuthFlow("naver"); // the user pressed an OAuth button in this tab
   window.history.replaceState(
     null,
     "",
