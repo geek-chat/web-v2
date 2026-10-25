@@ -6,7 +6,7 @@
 
 ## Current state (one-liner)
 
-**Phase 2 완료 (2026-10-25)**: 2.3에서 채팅 화면(메시지 목록과 이전 페이지, 입력, 타이핑, 읽음, 실패 재시도)이 들어갔고 로컬 백엔드로 두 사용자 확인까지 했다. 그 전에 2.1(WebSocket 클라이언트, 스토어), 2.2(방 목록, 새 대화), 리뷰 반영, CSP nonce 수정, Vercel 전환을 마쳤다. 다음은 Phase 3(그룹과 초대, 임시 방, 자동 삭제)이다. 사용자가 2026-10-25에 web-v2 재개를 지시해서(선택지 "지금 시작 + Vitest") 10-24부터의 보류를 풀었다. 백엔드 전환은 아직 진행 중이고 배포 URL이 없어서 로컬 백엔드 기준으로 개발한다.
+**Phase 2 완료 (2026-10-25)**: 2.3에서 채팅 화면(메시지 목록과 이전 페이지, 입력, 타이핑, 읽음, 실패 재시도)이 들어갔고 로컬 백엔드로 두 사용자 확인까지 했다. 그 전에 2.1(WebSocket 클라이언트, 스토어), 2.2(방 목록, 새 대화), 리뷰 반영, CSP nonce 수정, Vercel 전환을 마쳤다. 다음은 Phase 3(그룹과 초대, 임시 방, 자동 삭제)이다. 사용자가 2026-10-25에 web-v2 재개를 지시해서(선택지 "지금 시작 + Vitest") 10-24부터의 보류를 풀었다. server-v2는 2026-10-25 Render(`https://geek-chat-server-api.onrender.com`)에 올라갔고, 운영 웹(`https://web-lac-one-89.vercel.app`)이 그 백엔드를 쓴다. Render는 이 운영 도메인만 받으므로(localhost Origin은 WS 403) 개발과 두 사용자 확인은 계속 로컬 백엔드로 한다.
 
 Phase 1 결과: 가입과 로그인, single-flight 토큰 갱신, OAuth 콜백 4페이지, AuthGuard, `/me`(유저네임 변경, 로그아웃, 탈퇴). Vitest 94개 테스트와 tsc, lint, build가 모두 통과한다. 독립 리뷰의 HIGH, MEDIUM, LOW-1은 고쳤다. 라우트는 `/`, `/login`, `/signup`, `/auth/{success,oauth-link,oauth-complete,error}`, `/rooms`(임시), `/me`다.
 
@@ -450,7 +450,7 @@ R2의 1008 분기는 바뀌지 않는다. PR #11에서도 close는 `reject`의 `
 |---|---|
 | web-v2 재개 | ✅ 2026-10-25 사용자 지시로 재개 |
 | Vitest 도입 | ✅ `a1aa484` |
-| 백엔드 서비스 URL | 없음. Supabase 생성과 Render 연결은 사용자 계정으로만 할 수 있다 (`MIGRATION.md:175`). URL이 정해지면 Vercel env(`NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_WS_URL`)와 백엔드 `FRONTEND_URL`을 함께 바꾼다 |
+| 백엔드 서비스 URL | ✅ `https://geek-chat-server-api.onrender.com` (server-v2 `docs/DEPLOY-RENDER.md`, 기존 Render 서비스를 그 자리에서 v2로 전환). 2026-10-25 확인: `/health`가 `"db":"connected"`, Vercel 출처의 CORS와 WS(101) 허용, 토큰 없는 `/api/rooms`는 401. 무료 플랜이라 15분 쉬면 잠들고 첫 요청은 JVM 시작을 기다린다(문서 측정 3~4분) |
 | D1: Expo 앱을 지금 낼지, 웹 → PWA → Expo 순서를 따를지 | 사용자 결정 대기. `MOBILE_STRATEGY.md`는 이 결정 전에 쓴 초안이다 |
 | server-v2 PR #11 | ✅ 머지됨 (`07372dd`). 위 "다음 세션" 2번에서 문서에 반영함 |
 | server-v2 PR #12 (S3, S4 문서) | 열림. web-v2 코드에는 영향 없음 |
@@ -462,7 +462,7 @@ R2의 1008 분기는 바뀌지 않는다. PR #11에서도 close는 `reject`의 `
 | Phase 2.1 실측 | ✅ 2.2와 2.3 확인 때 함께 했다 (WS 연결 1개, 다른 사용자의 `new_message` 수신, 서버 재시작 뒤 재연결과 backfill). `MAX_CONNECTIONS` 토스트는 아직 브라우저로 보지 않았다 |
 | 다른 탭의 로그아웃과 계정 전환 | ✅ `df2f4f0`. 리뷰 HIGH로 올라와서 고쳤다. 다른 탭이 로그아웃하면 이 탭도 로그아웃되고, 다른 계정으로 로그인하면 이 탭도 그 계정으로 바뀐다 |
 | 리뷰 MEDIUM M4: 커서와 커밋 순서 | ✅ 첫 커서를 5초 겹쳐 잡음 (사용자 승인으로 기존 테스트 기대값 수정) |
-| Vercel 배포 | `web` 프로젝트가 `geek-chat/web-v2`를 배포한다 (2026-10-25 사용자 결정, ARCHITECTURE.md §5). env는 자리표시 값이라 로그인과 채팅은 백엔드 배포 뒤에 동작한다 |
+| Vercel 배포 | `web` 프로젝트가 `geek-chat/web-v2`를 배포한다 (2026-10-25 사용자 결정, ARCHITECTURE.md §5). 2026-10-25 Production env를 Render 주소로 바꾸고 다시 배포했다(배포 `9txTEuXJM`, 소스 `501afef`). 확인한 것: CSP `connect-src`, 코드 묶음의 API 주소(`api.invalid` 없음), 로그인 화면의 검증 문구와 콘솔. 로그인 뒤 흐름은 사용자가 직접 확인한다 |
 
 ---
 
@@ -512,4 +512,4 @@ R2의 1008 분기는 바뀌지 않는다. PR #11에서도 close는 `reject`의 `
 
 ## 한 줄 요약
 
-> **web-v2는 Phase 1(인증)과 Phase 2(WS, 방 목록, 채팅 화면)를 마쳤고 다음은 Phase 3(그룹, 초대, 임시 방, 자동 삭제)이다. 운영은 Vercel `web` 프로젝트(자리표시 env)에 올라가 있다. 환경 복구 → 기준선 확인 → 로컬 백엔드(위 "로컬 백엔드 띄우는 법") → 2.3 미확인 세 항목 → Phase 3 순서로 진행한다. 끝날 때 refresh-context 스킬 호출 필수.**
+> **web-v2는 Phase 1(인증)과 Phase 2(WS, 방 목록, 채팅 화면)를 마쳤고 다음은 Phase 3(그룹, 초대, 임시 방, 자동 삭제)이다. 운영은 Vercel `web` 프로젝트이고 Render의 server-v2를 쓴다. 환경 복구 → 기준선 확인 → 로컬 백엔드(위 "로컬 백엔드 띄우는 법") → 2.3 미확인 세 항목 → Phase 3 순서로 진행한다. 끝날 때 refresh-context 스킬 호출 필수.**

@@ -252,7 +252,7 @@ NEXT_PUBLIC_WS_URL=ws://localhost:8080/ws
 - **백엔드 배포 대상**: Render 무료(Docker) + Supabase Postgres (server-v2 `docs/MIGRATION.md` Phase 8). 서비스 URL은 아직 없다. Render 무료는 15분 동안 요청이 없으면 잠들어서 첫 요청이 느리다.
 - Vercel 빌드 자동 (`next build`). Output `.next` 자동.
 - main push → 자동 prod 배포. PR 브랜치 → preview 배포.
-- **Vercel 프로젝트 (2026-10-25)**: `jungsehuis-projects/web` 프로젝트의 Git 연결을 v1 `geek-chat/web`에서 `geek-chat/web-v2`로 바꿨다(사용자 결정). 도메인은 `web-lac-one-89.vercel.app` 그대로이고, Framework Preset은 Next.js, v1(Expo)의 빌드와 출력 경로 덮어쓰기는 껐다. env는 백엔드가 없어서 Production에 자리표시 값(`https://api.invalid`, `wss://api.invalid/ws`)을 넣었다. `.invalid`는 해석되지 않는 예약 도메인이라 로그인 폼 값이 밖으로 나가지 않는다. 백엔드를 배포하면 env를 실제 URL로 바꾸고 Redeploy하고, 백엔드 `FRONTEND_URL`을 `https://web-lac-one-89.vercel.app`으로 맞춘다. v1로 되돌릴 때는 이전 운영 배포로 Instant Rollback하면 된다 (Production Deployments 보존 기간 30일).
+- **Vercel 프로젝트 (2026-10-25)**: `jungsehuis-projects/web` 프로젝트의 Git 연결을 v1 `geek-chat/web`에서 `geek-chat/web-v2`로 바꿨다(사용자 결정). 도메인은 `web-lac-one-89.vercel.app` 그대로이고, Framework Preset은 Next.js, v1(Expo)의 빌드와 출력 경로 덮어쓰기는 껐다. 처음에는 백엔드가 없어서 Production env에 자리표시 값(`api.invalid`)을 넣었다. server-v2가 Render(`https://geek-chat-server-api.onrender.com`)에 올라간 뒤 2026-10-25에 `NEXT_PUBLIC_API_URL=https://geek-chat-server-api.onrender.com`, `NEXT_PUBLIC_WS_URL=wss://geek-chat-server-api.onrender.com/ws`로 바꾸고 다시 배포했다. `NEXT_PUBLIC_*`는 빌드 때 코드에 박히므로 값을 바꾸면 Redeploy가 필요하다. Vercel은 env 값을 편집하기 전에 이메일 인증 코드를 요구한다. 백엔드 `FRONTEND_URL`은 `https://web-lac-one-89.vercel.app`이고, Render는 REST CORS와 WS Origin 모두 이 도메인만 받는다. v1로 되돌릴 때는 이전 운영 배포로 Instant Rollback하면 된다 (Production Deployments 보존 기간 30일).
 
 ---
 
