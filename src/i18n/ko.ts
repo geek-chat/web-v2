@@ -74,6 +74,15 @@ export const ko = {
   "auth.callbackError.unknown": "알 수 없는 이유로 로그인하지 못했습니다",
   "auth.callbackError.back": "처음으로",
 
+  // Session (AuthGuard)
+  "session.offline.title": "서버에 연결할 수 없습니다",
+  "session.offline.body": "로그인 정보는 그대로 있습니다. 잠시 후 다시 시도하세요",
+
+  // Rooms (placeholder until Phase 2)
+  "rooms.placeholder.title": "{nickname} 님, 환영합니다",
+  "rooms.placeholder.body": "채팅방 목록은 다음 단계에서 열립니다",
+  "rooms.placeholder.me": "내 정보",
+
   // Auth — errors. Chosen by HTTP status + call context in src/lib/api/errorMessage.ts,
   // because the server's `error` field is the reason phrase, not the domain code.
   "auth.error.UsernameAlreadyTaken": "이미 사용 중인 사용자명입니다",
