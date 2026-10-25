@@ -195,6 +195,12 @@ npm run dev
 
 ### Session 2.3 — 채팅 화면 + Optimistic UI
 
+**상태 (2026-10-25)**: 완료. 계획과 달라진 점:
+- `TypingIndicator`, `ReadReceipt`, `ExpiringRoomBanner`는 따로 만들지 않았다. 타이핑 줄은 `ChatRoom`, 읽음 표시는 `MessageList`의 `readLabelFor`, 만료 배너는 `ChatHeader` 안에 있다.
+- 훅 세 개를 새로 뒀다. `useRoomMessages`는 첫 페이지와 이전 페이지, `useMarkRead`는 읽음 전송, `useTyping`은 타이핑 송수신을 맡는다.
+- `mark_read`는 방 화면이 마운트돼 있고 페이지가 보일 때만 보낸다(`.claude/RULES.md` R6). 대상이 상대의 burn-after-read 메시지면 서버가 지우기 때문이다.
+- 읽음 표시는 접속 뒤 받은 `read_update`로만 그린다. REST에 멤버별 읽음 시각이 없어서 새로 연 방에는 처음에 표시가 없다.
+
 **작업**:
 
 9. **채팅 화면** (2시간)
@@ -215,12 +221,12 @@ npm run dev
     - `src/components/chat/ReadReceipt.tsx`
     - mark_read debounced 500ms
 
-**Phase 2 완료 조건**:
-- [ ] 1:1 방 생성 + 메시지 송수신 (실시간)
-- [ ] 두 탭 / 두 사용자 동시 테스트 통과
-- [ ] 메시지 페이징 (스크롤 위)
-- [ ] typing indicator + read receipt
-- [ ] WS 재연결 (탭 닫고 다시 열기)
+**Phase 2 완료 조건** (2026-10-25, 로컬 server-v2 `07372dd`로 확인):
+- [x] 1:1 방 생성 + 메시지 송수신 (실시간)
+- [x] 두 사용자 동시 테스트. 한 브라우저의 두 탭으로는 할 수 없다(토큰을 탭끼리 공유하고, 다른 탭의 계정 전환을 감지한다). Alice는 앱 브라우저, Bob은 Node WebSocket 스크립트로 확인했다
+- [ ] 메시지 페이징 (스크롤 위), 일부 확인: 버튼으로 불러오기와 스크롤 위치 보정은 확인했다. 감시 요소(IntersectionObserver) 자동 로딩은 창을 띄운 브라우저에서 다시 봐야 한다
+- [x] typing indicator + read receipt
+- [x] WS 재연결: 서버를 내렸다 올려 재연결과 backfill을 확인했다. 탭을 닫고 다시 여는 경우는 새로 접속하는 경로라서 방을 여는 확인과 같다
 
 ---
 

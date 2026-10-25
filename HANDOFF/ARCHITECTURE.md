@@ -60,7 +60,7 @@ geek-chat-web-v2/
     │       │   ├── layout.tsx           # 데스크톱: 사이드바(RoomsPanel) + 본문
     │       │   ├── page.tsx             # 모바일: 방 목록, 데스크톱: "대화를 고르세요"
     │       │   ├── new/page.tsx         # 새 대화 (CreateRoomForm)
-    │       │   └── [id]/page.tsx        # 채팅 화면 (2.3 전까지 임시)
+    │       │   └── [id]/page.tsx        # 채팅 화면 (ChatRoom, 방마다 key로 새로 마운트)
     │       ├── me/page.tsx              # 프로필 + 로그아웃 + 탈퇴
     │       └── invite/[code]/page.tsx   # 초대 링크 join 처리
     ├── components/
@@ -72,14 +72,11 @@ geek-chat-web-v2/
     │   │   └── OAuthButtons.tsx
     │   ├── chat/
     │   │   ├── ChatConnection.tsx       # 연결 수명 + 알림 토스트 (2.1)
-    │   │   ├── ChatRoom.tsx             # MessageList + MessageInput + Header
-    │   │   ├── ChatHeader.tsx
-    │   │   ├── MessageList.tsx
-    │   │   ├── MessageItem.tsx
-    │   │   ├── MessageInput.tsx         # send_message + UUID 발급
-    │   │   ├── TypingIndicator.tsx
-    │   │   ├── ReadReceipt.tsx
-    │   │   └── ExpiringRoomBanner.tsx
+    │   │   ├── ChatRoom.tsx             # 조립: 첫 페이지, 타이핑 줄, 읽음 전송, 못 찾은 방
+    │   │   ├── ChatHeader.tsx           # 방 이름, 연결 상태, 만료 배너 (room_expiring)
+    │   │   ├── MessageList.tsx          # 이전 페이지(감시 요소 + 버튼), 스크롤 보정, readLabelFor
+    │   │   ├── MessageItem.tsx          # 말풍선, 보내는 중, 실패와 다시 보내기
+    │   │   └── MessageInput.tsx         # Enter 전송(IME 조합 중 제외), 자동 삭제 시간
     │   ├── room/
     │   │   ├── RoomList.tsx             # RoomList + RoomsPanel(제목줄)
     │   │   ├── RoomListItem.tsx         # roomTitle, formatActivity
@@ -103,7 +100,7 @@ geek-chat-web-v2/
     │   │   └── events.ts                # 서버/클라이언트 이벤트 zod 계약
     │   ├── chat/
     │   │   ├── connection.ts            # 싱글턴 수명, 이벤트 → 스토어, 낙관적 전송 (R2, R6)
-    │   │   └── backfill.ts              # 연결 수락 뒤 forward cursor 보충
+    │   │   └── backfill.ts              # 첫 페이지, 이전 페이지, 연결 수락 뒤 forward cursor 보충
     │   ├── auth/
     │   │   ├── storage.ts               # localStorage
     │   │   ├── jwt.ts                   # decode payload (만료 사전 체크)
@@ -113,14 +110,18 @@ geek-chat-web-v2/
     │   └── uuid.ts                      # crypto.randomUUID() wrapper
     ├── store/
     │   ├── auth.ts                      # status, user (토큰은 lib/auth/storage만)
-    │   ├── rooms.ts                     # rooms, currentRoomId, stale
+    │   ├── rooms.ts                     # rooms, currentRoomId, stale, reads(멤버별 읽음 지점)
     │   ├── messages.ts                  # byRoom: 서버 시각 순 + 대기 행은 끝
     │   └── ws.ts                        # client, status, expiringRooms
     ├── hooks/
     │   ├── useRooms.ts                  # SWR(키에 사용자 id) → rooms 스토어, stale이면 다시 받음
-    │   └── useUserSearch.ts             # 300ms debounce, 키에 사용자 id
+    │   ├── useUserSearch.ts             # 300ms debounce, 키에 사용자 id
+    │   ├── useRoomMessages.ts           # 첫 페이지 + 이전 페이지 (lib/chat/backfill)
+    │   ├── useMarkRead.ts               # mark_read: 500ms 뒤, 보이는 화면에서만 (R6)
+    │   └── useTyping.ts                 # typing_start 2초 간격, 표시 3초
     ├── test/
-    │   └── fakeWebSocket.ts             # 테스트용 WebSocket 대역
+    │   ├── fakeWebSocket.ts             # 테스트용 WebSocket 대역
+    │   └── fakeChatClient.ts            # ChatWSClient 대역 (send, on, emit)
     └── i18n/
         ├── ko.ts                        # 메시지 객체 맵
         └── index.ts                     # t(key) 헬퍼
@@ -148,6 +149,7 @@ geek-chat-web-v2/
       - new_message → store/messages.ts 병합, store/rooms.ts lastMessageAt (모르는 방이면 stale)
       - message_ack, clientMessageId가 실린 error → 대기 행을 확정하거나 failed로
       - room_expiring → store/ws.ts expiringRooms, room_expired → 방과 메시지 제거
+      - read_update → store/rooms.ts reads (앞으로만 감). typing_indicator는 방 화면의 useTyping이 직접 받고 저장하지 않음
     → onclose (처리 규칙 정본: .claude/RULES.md R2)
       - close() (로그아웃, 인증 화면을 벗어남) → 재연결 X
       - 1008 → 직전 거부 코드로 분기 (인증 코드는 refresh 1회, RATE_LIMITED는 refresh 없이 백오프, MAX_CONNECTIONS는 수동 재시도)

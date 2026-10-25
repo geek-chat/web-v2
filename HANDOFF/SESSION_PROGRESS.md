@@ -6,7 +6,7 @@
 
 ## Current state (one-liner)
 
-**Phase 2.2 완료 (2026-10-25)**: 방 목록, 새 대화 만들기, 임시 방 화면이 들어갔고 로컬 백엔드로 브라우저 확인까지 했다. 그 전에 Phase 2.1(WebSocket 클라이언트, 채팅 스토어)과 리뷰 반영, CSP nonce 수정, Vercel 전환을 마쳤다. 다음은 Phase 2.3(채팅 화면, 메시지 목록과 입력)이다. 사용자가 2026-10-25에 web-v2 재개를 지시해서(선택지 "지금 시작 + Vitest") 10-24부터의 보류를 풀었다. 백엔드 전환은 아직 진행 중이고 배포 URL이 없어서 로컬 백엔드 기준으로 개발한다.
+**Phase 2 완료 (2026-10-25)**: 2.3에서 채팅 화면(메시지 목록과 이전 페이지, 입력, 타이핑, 읽음, 실패 재시도)이 들어갔고 로컬 백엔드로 두 사용자 확인까지 했다. 그 전에 2.1(WebSocket 클라이언트, 스토어), 2.2(방 목록, 새 대화), 리뷰 반영, CSP nonce 수정, Vercel 전환을 마쳤다. 다음은 Phase 3(그룹과 초대, 임시 방, 자동 삭제)이다. 사용자가 2026-10-25에 web-v2 재개를 지시해서(선택지 "지금 시작 + Vitest") 10-24부터의 보류를 풀었다. 백엔드 전환은 아직 진행 중이고 배포 URL이 없어서 로컬 백엔드 기준으로 개발한다.
 
 Phase 1 결과: 가입과 로그인, single-flight 토큰 갱신, OAuth 콜백 4페이지, AuthGuard, `/me`(유저네임 변경, 로그아웃, 탈퇴). Vitest 94개 테스트와 tsc, lint, build가 모두 통과한다. 독립 리뷰의 HIGH, MEDIUM, LOW-1은 고쳤다. 라우트는 `/`, `/login`, `/signup`, `/auth/{success,oauth-link,oauth-complete,error}`, `/rooms`(임시), `/me`다.
 
@@ -28,6 +28,51 @@ Phase 1 결과: 가입과 로그인, single-flight 토큰 갱신, OAuth 콜백 4
 | lucide-react | 1.14.0 |
 | vitest | 5.0.5 (jsdom 30.1.3, @testing-library/react 16.3.3, @vitejs/plugin-react 6.1.2) |
 | @types/node | 24.19.2 (vitest 5의 peer 요구, 로컬 런타임 Node 24.21에 맞춤) |
+
+---
+
+## 2026-10-25 Phase 2.3 결과
+
+### 커밋
+
+| 커밋 | 내용 |
+|---|---|
+| `cc511ee` | `compareInstants`, 읽음 지점(`rooms.reads`, `read_update`), `loadOlderMessages`, 훅 `useRoomMessages`, `useMarkRead`, `useTyping` |
+| `c99b33c` | `ChatRoom`, `ChatHeader`, `MessageList`, `MessageItem`, `MessageInput`, `/rooms/[id]` 교체 |
+| `9924639` | 마무리 검증에서 찾은 순서 문제 수정: `useRoomMessages`는 직접 불러온 방을 `loadRoomMessages`가 답한 뒤에야 loaded로 본다 |
+
+### 설계 근거 (server-v2 `07372dd`)
+
+| 사실 | 근거 | 반영 |
+|---|---|---|
+| `mark_read`의 대상이 상대가 보낸 burn-after-read 메시지면 서버가 그 메시지를 영구 삭제한다 | `MessageService.markAsRead` | 방 화면이 마운트돼 있고, 소켓이 수락됐고, 페이지가 보일 때만 보낸다. 타이머가 끝날 때 다시 확인한다 |
+| 읽음 시각은 그 메시지의 `createdAt`이고 앞으로만 간다. REST에는 멤버의 읽음 시각이 없다 | `markAsRead`, `RoomMemberResponse` | 읽음 표시는 접속 뒤 온 `read_update`로만 그린다 (S15) |
+| 타이핑은 저장하지 않고 다른 멤버에게만 보낸다 | `handleTypingStart` | 보내기는 2초에 한 번, 표시는 마지막 이벤트 뒤 3초 |
+| 메시지 길이와 `ttlSeconds` 값은 서버가 검사하지 않는다. 빈 메시지만 거부한다 | `MessageService.sendMessage` | 빈 메시지는 보내지 않고, TTL은 문서의 0, 30, 300, 3600, 86400초만 고른다 |
+
+### 검증 (2026-10-25)
+
+`9924639` 기준으로 `memguard -- npm test`(38개 파일, 247개 테스트)를 세 번 연달아 돌려 모두 통과했고, tsc, lint, build도 exit 0이다.
+
+마무리 검증에서 `useRoomMessages.test.tsx`의 "loads the first page" 케이스가 세 번 중 두 번 실패했다(`reachedStart`가 false). 처음에는 시간이나 환경에 기대는 테스트라고 봤지만 기각했다. 원인은 프로덕션 순서였다. 스토어는 첫 페이지를 병합할 때 방을 loaded로 표시하는데, 훅은 promise가 풀린 뒤(소켓이 열려 있으면 backfill 요청 뒤)에야 시작에 닿았는지 알았다. 그 사이 화면은 "대화의 처음입니다" 대신 이전 페이지 버튼을 보여 주고, 감시 요소가 보이면 쓸모없는 backward 요청도 나갈 수 있었다. 훅이 직접 불러온 방은 답을 받은 뒤에 loaded로 보도록 고쳤다. 대가로 소켓이 열려 있을 때 방을 처음 열면 backfill 요청 한 번만큼 늦게 그린다(측정하지 않음). 이 순서를 고정하는 테스트를 새로 붙였고, 고치기 전에 실패하는 것을 확인했다.
+
+로컬 server-v2(`07372dd`)로 앱 브라우저에서 확인했다. Alice는 브라우저, Bob은 Node 스크립트(WebSocket)다.
+
+| 항목 | 결과 |
+|---|---|
+| 방을 열면 첫 페이지와 상대 이름 | ✅ 헤더 "Bob", 기존 메시지, "대화의 처음입니다" |
+| Alice가 보낸 메시지 | ✅ 바로 확정, Bob 쪽에 `new_message`와 `typing_indicator` 도착 |
+| Bob의 타이핑 | ✅ "Bob 님이 입력 중"이 떴다가 3초 뒤 사라짐 |
+| 읽음 (Alice → Bob) | ✅ Bob 메시지가 화면에 뜨자 Bob에게 Alice의 `read_update`가 감 |
+| 읽음 (Bob → Alice) | ✅ Alice 메시지 아래 "읽음" (DOM 확인) |
+| 이전 페이지 (버튼) | ✅ 123행이 되고 "대화의 처음입니다", `scrollTop` 0에서 128로 보정돼 보던 위치 유지 |
+| 재연결과 backfill | ✅ 서버를 내리면 "다시 연결하는 중…", 다시 올린 뒤 Alice가 붙기 전에 Bob이 보낸 메시지가 재연결 뒤 나타남 |
+| 이전 페이지 자동 로딩 (IntersectionObserver) | **미확인**. 아래 참고 |
+| 실제 한글 IME 조합 중 Enter | **미확인**. 자동화 입력은 IME를 거치지 않는다. 단위 테스트는 `isComposing`과 `keyCode 229` 둘 다 확인한다 |
+
+자동 로딩을 확인하지 못한 이유: 앱 브라우저 창이 숨겨진 동안에는 프레임이 돌지 않았다(`requestAnimationFrame`이 45초 동안 실행되지 않음). IntersectionObserver 판정도 그 단계에서 일어나서 콜백이 오지 않았다. 컴포넌트의 관찰자는 감시 요소와 스크롤 루트를 맞게 잡고 있었다(`observe` 기록). 창을 띄운 상태(Cmd+Shift+B)에서 위로 스크롤해 확인해야 한다.
+
+기각한 가설: 처음에는 "숨겨진 창이라 렌더링이 멈췄다"고 봤다가, `requestAnimationFrame`이 한 번 실행되는 것을 보고 기각했다. 이어서 컴포넌트 쪽 문제를 의심해 fetch와 관찰자를 감시했다. 관찰자는 정상으로 만들어졌고, 이후 rAF가 45초 동안 오지 않아 다시 창 상태가 원인으로 좁혀졌다. 첫 rAF는 그 순간 프레임이 잠깐 돈 것으로 본다.
 
 ---
 
@@ -252,11 +297,13 @@ LOW-2 수정 후보 (미실측): 지금처럼 즉시 지운 뒤 `queueMicrotask`
 | S5 | server-v2 `render.yaml`, `AppProperties.frontendOriginPatterns` | Render에서는 REST CORS도 `FRONTEND_URL` 하나만 허용한다 (패턴 기본값이 빈 목록). preview 배포는 REST도 실패한다 |
 | S6 | server-v2 `SpringDataMessageRepository.findByRoomIdAfter` | 메시지 cursor 페이징에 id 보조 정렬이 없어서, 같은 `createdAt`을 가진 메시지가 페이지 경계에서 빠질 수 있다 (가능성 낮음) |
 | S8, S9 | server-v2 인증 | 보안 항목 2건. 2026-10-25에 사용자에게 직접 보고했다. 이 저장소는 공개라서 고쳐질 때까지 상세는 적지 않는다. **운영 배포 전 처리 권장** |
+| S16 | server-v2 | 보안 항목 1건. 2026-10-25에 사용자에게 직접 보고했다. 같은 이유로 상세는 적지 않는다. **운영 배포 전 처리 권장** |
 | S10 | server-v2 `SecurityConfig.securityFilterChain` | `/error`가 허용 목록에 없고 entry point가 본문 없는 401을 돌려준다. 그래서 공개 엔드포인트의 bean validation 실패(400)가 401로 바뀌어 보일 수 있다 (설정 기준, 실측 전). web-v2는 서버와 같은 검증을 폼에서 먼저 해서 영향이 작다 |
 | S11 | server-v2 `ChatEventListener.onMessageExpired`, `MessageExpirationScheduler` | 스케줄러가 `@Transactional` 안에서 이벤트를 내고 리스너는 `@Async @EventListener`라서, `message_expired`가 삭제 커밋보다 먼저 나갈 수 있다. 그 사이 REST가 지운 메시지를 돌려준다. web-v2는 tombstone으로 막았다. `AFTER_COMMIT`으로 바꾸면 근본 해결 |
 | S12 | server-v2 `MessageResponse` (`MessageDto.kt`) | `clientMessageId`가 없어서 ack를 잃은 메시지를 REST 행과 맞출 수 없다. failed 행과 서버 행이 함께 보인다 |
 | S13 | server-v2 `ChatWebSocketHandler.afterConnectionEstablished` | 연결을 받아들여도 아무 프레임을 보내지 않아서, 클라이언트는 1초 동안 거부가 없으면 수락으로 본다. `connected` 같은 프레임이 있으면 추정할 필요가 없다 |
 | S14 | server-v2 websocket 모듈 | 로그아웃과 탈퇴 때 그 사용자의 소켓을 닫지 않는다(닫는 곳은 `reject` 하나). heartbeat 설정도 없어서 끊긴 연결이 열린 것처럼 남을 수 있다. 배포 환경 프록시의 idle timeout도 확인이 필요하다 |
+| S15 | server-v2 `RoomMemberResponse`, 방 목록 API | 멤버의 읽음 시각(`lastReadAt`)을 주는 REST가 없다. 새로 연 화면은 접속 뒤 `read_update`가 올 때까지 읽음 표시를 그릴 수 없다 |
 | S7 | server-v2 `ChatErrorMapping.kt` | 에러 본문의 `error`가 HTTP reason phrase라서 같은 상태 코드를 쓰는 도메인 에러(예: 가입 409의 유저네임과 이메일)를 구분하려면 영어 메시지 앞부분을 봐야 한다. 안정적인 `code` 필드가 있으면 클라이언트가 메시지 문구에 기대지 않아도 된다 |
 | T1 | `geek-chat-web` main `559d170` | v2가 리다이렉트하는 `/auth/oauth-link`, `/auth/oauth-complete`, `/auth/error` 라우트 파일이 없음. v1 연동은 `/auth/success#linking_required=true` 형식 (`app/auth/success.tsx:18-33`). web-internal 세션에 공유함. 10-25 기준 v1 `feat/v2-transport` 브랜치(`76cb0b1`)에서 처리 중이고 아직 머지 전 |
 
@@ -292,7 +339,7 @@ ea0f041 feat(env): add env validation + strict CSP headers + Turbopack root pin
 
 ## In-flight
 
-없음. Phase 2.2(`9b613bb`)까지 커밋했고, 이 문서를 커밋한 뒤 `main`에 반영해 push한다. push하면 Vercel `web` 프로젝트가 자동으로 다시 배포한다.
+없음. Phase 2.3은 `cc511ee`, `c99b33c`, `9924639`와 이 문서 커밋으로 끝났다.
 
 ---
 
@@ -322,11 +369,11 @@ npm run dev
 
 앱 브라우저로 볼 때는 `.claude/launch.json`의 `web-v2 dev`(또는 `npm run build` 뒤 `web-v2 prod`)를 쓴다. 화면을 바꿨으면 브라우저 콘솔에 CSP 오류가 없는지와, 빈 로그인 폼 제출 때 검증 문구가 뜨는지(hydration)를 확인한다. 단위 테스트와 빌드로는 막힌 스크립트를 잡지 못한다.
 
-읽을 문서 (Phase 2 기준, 총 ~30분):
-1. **이 파일**, 특히 "2026-10-25 Phase 1.2 결과"와 "2026-10-24 세션 간 협업 결과" (5분)
-2. **`.claude/RULES.md`** R2 (WS 처리 정본), R6 (낙관적 UI) (10분)
+읽을 문서 (Phase 3 기준, 총 ~30분):
+1. **이 파일**, 특히 "2026-10-25 Phase 2.3 결과"와 서버 보고 표 (5분)
+2. **`.claude/RULES.md`** R2 (WS 처리 정본, `room_expiring`, `room_expired`, `message_expired`), R6 (낙관적 UI, 읽음) (10분)
 3. **`HANDOFF/API_INTEGRATION.md`** §5 (WS 이벤트와 클라이언트 샘플) (10분)
-4. **server-v2 `docs/WEBSOCKET.md`와 `ChatWebSocketHandler.kt`** (5분). 문서와 코드가 다르면 코드가 맞다
+4. **server-v2 `docs/API.md`** §3.2 (방 생성, `ttlHours`)와 §4 (초대 링크), **`docs/WEBSOCKET.md`** (5분). 문서와 코드가 다르면 코드가 맞다
 
 ### 1. 백엔드 로컬 실행 + 수동 검증 (Phase 1 통합 확인, 사용자 환경 필요)
 
@@ -375,15 +422,15 @@ PR #11(`fix/ws-contract-gaps`)은 `07372dd`로 머지됐고, 이 세션에서 �
 
 R2의 1008 분기는 바뀌지 않는다. PR #11에서도 close는 `reject`의 `POLICY_VIOLATION` 하나이고, 1008은 연결할 때만 온다.
 
-### 3. Phase 2.3: 채팅 화면
+### 3. Phase 3: 그룹, 초대, 임시 방, 자동 삭제
 
-`HANDOFF/DEVELOPMENT_PLAN.md`의 Session 2.3을 따른다. `/rooms/[id]`의 임시 화면을 바꾼다. 이미 정해 둔 연결점:
-- 첫 페이지는 `loadRoomMessages(id)`(`src/lib/chat/backfill.ts`)로 받는다. 방을 "로드됨"으로 표시하고, 소켓이 이미 수락된 뒤라면 backfill을 한 번 더 돈다. 직접 `listMessages`를 부르지 않는다.
-- 위로 스크롤하면 `direction: "backward"`이고, 커서는 가장 오래된 서버 행의 `createdAt` 문자열이다. backward 페이지는 내림차순으로 오지만 스토어가 정렬한다.
-- 보내기는 `sendChatMessage({roomId, senderId, content, ttlSeconds})`, 실패한 행의 재시도는 `retryChatMessage(clientMessageId)`를 쓴다. React key는 `clientMessageId ?? id`.
-- 보낸 사람 이름: REST 행은 `senderNickname`, WS로 온 행은 방 멤버(`useRoomsStore`)에서 찾는다.
-- 타이핑(`typing_start`, `typing_indicator`)과 읽음(`mark_read`, `read_update`)은 아직 스토어에 연결되지 않았다. `ChatWSClient.on()`으로 붙인다.
-- 두 사용자 확인은 한 브라우저로 할 수 없다(토큰이 탭끼리 공유되고 다른 탭 계정 전환을 감지함). 한쪽은 앱 브라우저, 다른 쪽은 Node 스크립트로 WebSocket에 붙는다(이번 세션의 `bob-send.mjs` 방식).
+`HANDOFF/DEVELOPMENT_PLAN.md`의 Session 3.1부터 따른다. 먼저 남은 확인 두 가지를 한다.
+- 앱 브라우저 창을 띄운 상태(Cmd+Shift+B)에서 방을 위로 스크롤해 이전 페이지가 자동으로 붙는지 본다(2.3의 미확인 항목).
+- 실제 한글 IME로 입력하고 Enter를 눌러, 마지막 글자가 잘리거나 두 번 전송되지 않는지 본다.
+
+두 사용자 확인은 한 브라우저로 할 수 없다. 토큰이 탭끼리 공유되고, 다른 탭의 계정 전환을 감지하기 때문이다. 한쪽은 앱 브라우저, 다른 쪽은 Node 스크립트로 WebSocket에 붙는다.
+- 2026-10-25에 쓴 스크립트는 `send`, `flood`, `typing`, `read`, `listen` 명령을 받았다.
+- 스크립트는 세션 scratchpad에 있어서 다음 세션에는 남지 않는다. 필요하면 같은 방식으로 다시 만든다.
 
 ### 4. 세션 종료 직전
 
@@ -404,9 +451,9 @@ R2의 1008 분기는 바뀌지 않는다. PR #11에서도 close는 `reject`의 `
 | `style-src 'unsafe-inline'` | ✅ 유지로 정리 (2026-10-25, 위 "배포 후 발견") |
 | CSP가 hydration을 막음 | ✅ nonce + `src/proxy.ts`로 고침 (사용자 선택, 위 "배포 후 발견") |
 | 리뷰 MEDIUM: 콜백 링크 출처 확인 | ✅ web-v2 쪽은 `d0a9116` (사용자가 "둘 다" 선택). 서버 쪽 보완은 사용자가 따로 처리 |
-| S8, S9 서버 보안 항목 | 사용자가 처리 담당을 정함. 운영 배포 전 처리 권장 |
+| S8, S9, S16 서버 보안 항목 | 사용자가 처리 담당을 정함. 운영 배포 전 처리 권장 |
 | 리뷰 LOW-2: Next canonical URL에 hash 잔류 | 남김. 위 "코드 리뷰" 절의 수정 후보를 dev에서 실측한 뒤 적용 |
-| Phase 2.1 실측 | ✅ 2.2 확인 때 함께 했다 (WS 연결 1개, 다른 사용자의 `new_message` 수신). 재연결과 `MAX_CONNECTIONS` 토스트는 아직 브라우저로 보지 않았다 |
+| Phase 2.1 실측 | ✅ 2.2와 2.3 확인 때 함께 했다 (WS 연결 1개, 다른 사용자의 `new_message` 수신, 서버 재시작 뒤 재연결과 backfill). `MAX_CONNECTIONS` 토스트는 아직 브라우저로 보지 않았다 |
 | 다른 탭의 로그아웃과 계정 전환 | ✅ `df2f4f0`. 리뷰 HIGH로 올라와서 고쳤다. 다른 탭이 로그아웃하면 이 탭도 로그아웃되고, 다른 계정으로 로그인하면 이 탭도 그 계정으로 바뀐다 |
 | 리뷰 MEDIUM M4: 커서와 커밋 순서 | ✅ 첫 커서를 5초 겹쳐 잡음 (사용자 승인으로 기존 테스트 기대값 수정) |
 | Vercel 배포 | `web` 프로젝트가 `geek-chat/web-v2`를 배포한다 (2026-10-25 사용자 결정, ARCHITECTURE.md §5). env는 자리표시 값이라 로그인과 채팅은 백엔드 배포 뒤에 동작한다 |
@@ -453,10 +500,10 @@ R2의 1008 분기는 바뀌지 않는다. PR #11에서도 close는 `reject`의 `
 - 위치: 앱이 만든 worktree (`.claude/worktrees/<이름>`). 이름은 재활용될 때마다 바뀌니 `git rev-parse --show-toplevel`로 확인한다.
 - 브랜치: `claude/fervent-bell-35addf`. 메인 체크아웃(`~/Work/geek-chat/geek-chat-web-v2`)의 `main`에 fast-forward로 반영한 뒤 `origin`(`geek-chat/web-v2`, 공개 저장소)에 push한다.
 - 2026-10-25 세션에서는 사용자가 git 명령(병합, push 포함)을 에이전트에게 맡겼다 ("git 명령어 전부 승인할게 너가 해"). 이 승인은 그 세션 한정이라, 다음 세션에서 push하기 전에는 다시 확인받는다.
-- 공개 저장소라서 고쳐지지 않은 서버 보안 문제의 상세(S8, S9)는 문서와 커밋 메시지에 쓰지 않는다.
+- 공개 저장소라서 고쳐지지 않은 서버 보안 문제의 상세(S8, S9, S16)는 문서와 커밋 메시지에 쓰지 않는다.
 
 ---
 
 ## 한 줄 요약
 
-> **web-v2는 Phase 1(인증), 2.1(WS 클라이언트, 스토어), 2.2(방 목록, 새 대화)를 마쳤고 다음은 Phase 2.3(채팅 화면)이다. 운영은 Vercel `web` 프로젝트(자리표시 env)에 올라가 있다. 환경 복구 → 기준선 확인 → 로컬 백엔드(위 "로컬 백엔드 띄우는 법") → Phase 2.3 순서로 진행한다. 끝날 때 refresh-context 스킬 호출 필수.**
+> **web-v2는 Phase 1(인증)과 Phase 2(WS, 방 목록, 채팅 화면)를 마쳤고 다음은 Phase 3(그룹, 초대, 임시 방, 자동 삭제)이다. 운영은 Vercel `web` 프로젝트(자리표시 env)에 올라가 있다. 환경 복구 → 기준선 확인 → 로컬 백엔드(위 "로컬 백엔드 띄우는 법") → 2.3 미확인 두 항목 → Phase 3 순서로 진행한다. 끝날 때 refresh-context 스킬 호출 필수.**
