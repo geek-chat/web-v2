@@ -63,3 +63,28 @@ describe("useRoomMessages", () => {
     expect(loadOlderMessages).toHaveBeenCalledTimes(2);
   });
 });
+
+describe("useRoomMessages first load", () => {
+  beforeEach(() => {
+    vi.mocked(loadRoomMessages).mockReset();
+    useMessagesStore.getState().reset();
+  });
+
+  it("stays unloaded until its own first load answers, then knows the start", async () => {
+    let answer: (atStart: boolean) => void = () => {};
+    vi.mocked(loadRoomMessages).mockImplementation((roomId) => {
+      useMessagesStore.getState().mergeServerMessages(roomId, []); // merged, the backfill still running
+      return new Promise<boolean>((resolve) => {
+        answer = resolve;
+      });
+    });
+
+    const { result } = renderHook(() => useRoomMessages("r1"));
+    expect(result.current.loaded).toBe(false);
+
+    await act(async () => answer(true));
+
+    expect(result.current.loaded).toBe(true);
+    expect(result.current.reachedStart).toBe(true);
+  });
+});
