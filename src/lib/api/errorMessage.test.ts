@@ -62,3 +62,34 @@ describe("describeApiError for joining by invite", () => {
     expect(describeApiError(err, "invite")).toBe(expected);
   });
 });
+
+describe("describeApiError after the server-v2 error fixes (S10, S18)", () => {
+  it.each<[string, ApiError, ErrorContext, string]>([
+    [
+      "a link to a one-to-one room",
+      apiError(400, "Invite links are only available for group rooms", "Bad Request"),
+      "invite",
+      ko["invite.invalid"],
+    ],
+    [
+      "a password of the wrong length, as a field error",
+      apiError(400, "password: Password must be 8-72 chars", "Bad Request"),
+      "signup",
+      ko["auth.error.WeakPassword"],
+    ],
+    [
+      "the same, joined with another field's error",
+      apiError(400, "nickname: Nickname must be 1-20 chars, password: Password must be 8-72 chars", "Bad Request"),
+      "signup",
+      ko["auth.error.WeakPassword"],
+    ],
+    [
+      "another field alone",
+      apiError(400, "nickname: Nickname must be 1-20 chars", "Bad Request"),
+      "signup",
+      ko["auth.error.invalidInput"],
+    ],
+  ])("%s", (_name, err, context, expected) => {
+    expect(describeApiError(err, context)).toBe(expected);
+  });
+});

@@ -44,7 +44,9 @@ function byContext(status: number, message: string, context: ErrorContext): stri
           : t("auth.error.UsernameAlreadyTaken");
       }
       if (status === 400) {
-        return message.startsWith("Password")
+        // WeakPassword (AuthService) starts with "Password"; the length check on the
+        // field comes as "password: …", joined with any other field errors (S10).
+        return message.startsWith("Password") || message.includes("password:")
           ? t("auth.error.WeakPassword")
           : t("auth.error.invalidInput");
       }
@@ -74,11 +76,14 @@ function byContext(status: number, message: string, context: ErrorContext): stri
       }
       return null;
     case "invite":
-      // Joining by code (InviteLinkService.joinByInviteCode); its only 400 is RoomFull.
+      // Joining by code (InviteLinkService.joinByInviteCode). A 400 is a full room,
+      // or a link to a DIRECT room made before the server refused those (S18).
       if (status === 404) return t("invite.error.notFound");
       if (status === 410) return t("invite.error.gone");
       if (status === 409) return t("invite.error.alreadyMember");
-      if (status === 400) return t("rooms.error.RoomFull");
+      if (status === 400) {
+        return message.startsWith("Room is full") ? t("rooms.error.RoomFull") : t("invite.invalid");
+      }
       return null;
     case "generic":
       return null;
