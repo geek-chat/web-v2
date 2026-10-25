@@ -83,6 +83,21 @@ export const ko = {
   "rooms.placeholder.body": "채팅방 목록은 다음 단계에서 열립니다",
   "rooms.placeholder.me": "내 정보",
 
+  // Me (profile)
+  "me.title": "내 정보",
+  "me.back": "채팅방으로",
+  "me.nickname": "닉네임",
+  "me.username": "사용자명",
+  "me.username.empty": "아직 정하지 않았습니다. 영소문자/숫자/_ 3~20자",
+  "me.username.submit": "사용자명 저장",
+  "me.username.success": "사용자명을 저장했습니다",
+  "me.logout.success": "로그아웃했습니다",
+  "me.withdraw.title": "회원 탈퇴",
+  "me.withdraw.description": "탈퇴하면 계정이 익명 처리되고 되돌릴 수 없습니다. 계속하려면 {phrase}를 그대로 입력하세요",
+  "me.withdraw.label": "확인 문구",
+  "me.withdraw.submit": "탈퇴하기",
+  "me.withdraw.success": "탈퇴했습니다",
+
   // Auth — errors. Chosen by HTTP status + call context in src/lib/api/errorMessage.ts,
   // because the server's `error` field is the reason phrase, not the domain code.
   "auth.error.UsernameAlreadyTaken": "이미 사용 중인 사용자명입니다",
