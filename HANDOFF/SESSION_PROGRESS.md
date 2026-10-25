@@ -40,6 +40,7 @@ Phase 1 결과: 가입과 로그인, single-flight 토큰 갱신, OAuth 콜백 4
 | `cc511ee` | `compareInstants`, 읽음 지점(`rooms.reads`, `read_update`), `loadOlderMessages`, 훅 `useRoomMessages`, `useMarkRead`, `useTyping` |
 | `c99b33c` | `ChatRoom`, `ChatHeader`, `MessageList`, `MessageItem`, `MessageInput`, `/rooms/[id]` 교체 |
 | `9924639` | 마무리 검증에서 찾은 순서 문제 수정: `useRoomMessages`는 직접 불러온 방을 `loadRoomMessages`가 답한 뒤에야 loaded로 본다 |
+| `28e295c` | 위 수정의 빈틈 두 가지: 목록을 그리기 전에는 행을 내주지 않고(`useMarkRead` 보호), 병합 뒤 backfill이 실패해도 첫 페이지를 보여 준다 |
 
 ### 설계 근거 (server-v2 `07372dd`)
 
@@ -52,9 +53,13 @@ Phase 1 결과: 가입과 로그인, single-flight 토큰 갱신, OAuth 콜백 4
 
 ### 검증 (2026-10-25)
 
-`9924639` 기준으로 `memguard -- npm test`(38개 파일, 247개 테스트)를 세 번 연달아 돌려 모두 통과했고, tsc, lint, build도 exit 0이다.
+`28e295c` 기준으로 `memguard -- npm test`(38개 파일, 249개 테스트)를 두 번 돌려 모두 통과했고, tsc, lint, build도 exit 0이다. 그 전 `9924639`에서는 247개로 세 번 연달아 통과했다.
 
 마무리 검증에서 `useRoomMessages.test.tsx`의 "loads the first page" 케이스가 세 번 중 두 번 실패했다(`reachedStart`가 false). 처음에는 시간이나 환경에 기대는 테스트라고 봤지만 기각했다. 원인은 프로덕션 순서였다. 스토어는 첫 페이지를 병합할 때 방을 loaded로 표시하는데, 훅은 promise가 풀린 뒤(소켓이 열려 있으면 backfill 요청 뒤)에야 시작에 닿았는지 알았다. 그 사이 화면은 "대화의 처음입니다" 대신 이전 페이지 버튼을 보여 주고, 감시 요소가 보이면 쓸모없는 backward 요청도 나갈 수 있었다. 훅이 직접 불러온 방은 답을 받은 뒤에 loaded로 보도록 고쳤다. 대가로 소켓이 열려 있을 때 방을 처음 열면 backfill 요청 한 번만큼 늦게 그린다(측정하지 않음). 이 순서를 고정하는 테스트를 새로 붙였고, 고치기 전에 실패하는 것을 확인했다.
+
+이 수정은 빈틈 두 개를 남겼고, push 전 검토에서 찾아 `28e295c`로 막았다. 하나는 목록을 숨긴 동안에도 훅이 병합된 행을 내줘서, `ChatRoom`이 그 행을 받은 `useMarkRead`로 아무도 보지 않은 행에 `mark_read`를 보낼 수 있었던 것이다(첫 페이지보다 먼저 온 실시간 행도 같았다). 다른 하나는 병합 뒤 backfill이 실패하면 받아 둔 첫 페이지 대신 재시도 화면이 뜬 것이다. 두 경우 모두 테스트를 붙였고 고치기 전에 실패하는 것을 확인했다.
+
+위 브라우저 확인은 `9924639`, `28e295c` 전의 코드로 했다. 방을 처음 열 때 목록을 그리는 시점이 바뀌었으니 다음 세션에서 한 번 다시 본다.
 
 로컬 server-v2(`07372dd`)로 앱 브라우저에서 확인했다. Alice는 브라우저, Bob은 Node 스크립트(WebSocket)다.
 
@@ -339,7 +344,7 @@ ea0f041 feat(env): add env validation + strict CSP headers + Turbopack root pin
 
 ## In-flight
 
-없음. Phase 2.3은 `cc511ee`, `c99b33c`, `9924639`와 이 문서 커밋으로 끝났다.
+없음. Phase 2.3은 `cc511ee`, `c99b33c`, `9924639`, `28e295c`와 문서 커밋으로 끝났다.
 
 ---
 
@@ -424,7 +429,8 @@ R2의 1008 분기는 바뀌지 않는다. PR #11에서도 close는 `reject`의 `
 
 ### 3. Phase 3: 그룹, 초대, 임시 방, 자동 삭제
 
-`HANDOFF/DEVELOPMENT_PLAN.md`의 Session 3.1부터 따른다. 먼저 남은 확인 두 가지를 한다.
+`HANDOFF/DEVELOPMENT_PLAN.md`의 Session 3.1부터 따른다. 먼저 남은 확인 세 가지를 한다.
+- 방을 처음 열면 스피너 뒤에 목록과 "대화의 처음입니다"(짧은 방)가 한 번에 뜨는지 본다. `9924639`, `28e295c`가 그리는 시점을 바꿨는데 브라우저로는 아직 보지 않았다.
 - 앱 브라우저 창을 띄운 상태(Cmd+Shift+B)에서 방을 위로 스크롤해 이전 페이지가 자동으로 붙는지 본다(2.3의 미확인 항목).
 - 실제 한글 IME로 입력하고 Enter를 눌러, 마지막 글자가 잘리거나 두 번 전송되지 않는지 본다.
 
@@ -506,4 +512,4 @@ R2의 1008 분기는 바뀌지 않는다. PR #11에서도 close는 `reject`의 `
 
 ## 한 줄 요약
 
-> **web-v2는 Phase 1(인증)과 Phase 2(WS, 방 목록, 채팅 화면)를 마쳤고 다음은 Phase 3(그룹, 초대, 임시 방, 자동 삭제)이다. 운영은 Vercel `web` 프로젝트(자리표시 env)에 올라가 있다. 환경 복구 → 기준선 확인 → 로컬 백엔드(위 "로컬 백엔드 띄우는 법") → 2.3 미확인 두 항목 → Phase 3 순서로 진행한다. 끝날 때 refresh-context 스킬 호출 필수.**
+> **web-v2는 Phase 1(인증)과 Phase 2(WS, 방 목록, 채팅 화면)를 마쳤고 다음은 Phase 3(그룹, 초대, 임시 방, 자동 삭제)이다. 운영은 Vercel `web` 프로젝트(자리표시 env)에 올라가 있다. 환경 복구 → 기준선 확인 → 로컬 백엔드(위 "로컬 백엔드 띄우는 법") → 2.3 미확인 세 항목 → Phase 3 순서로 진행한다. 끝날 때 refresh-context 스킬 호출 필수.**
