@@ -144,7 +144,7 @@ function bindEvents(client: ChatWSClient): () => void {
     }),
     client.on("new_message", (message) => {
       messages().addLiveMessage(message.roomId, message);
-      rooms().touchRoom(message.roomId, message.createdAt);
+      rooms().touchRoom(message.roomId, message.createdAt, message.senderId);
     }),
     client.on("message_ack", ({ clientMessageId, serverId }) => {
       clearAckTimer(clientMessageId);

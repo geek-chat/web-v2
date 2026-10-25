@@ -113,6 +113,15 @@ export const ko = {
   "invite.error.notFound": "초대 링크를 찾을 수 없습니다",
   "invite.error.gone": "만료되었거나 사용 횟수를 다 쓴 초대 링크입니다",
   "invite.error.alreadyMember": "이미 참여한 방입니다. 대화 목록에서 열어 주세요",
+  "invite.error.create": "초대 링크를 만들지 못했습니다",
+  "invite.open": "초대",
+  "invite.create": "초대 링크 만들기",
+  "invite.linkLabel": "초대 링크 주소",
+  "invite.copy": "복사",
+  "invite.copied": "복사했습니다",
+  "invite.copyManually": "자동 복사가 되지 않습니다. 주소를 직접 선택해 복사해 주세요",
+  "invite.expiresAt": "{time}까지 쓸 수 있습니다. 링크가 있는 사람은 누구나 이 방에 들어올 수 있습니다",
+  "invite.close": "닫기",
 
   // Chat screen (src/components/chat)
   "chat.input.label": "메시지",

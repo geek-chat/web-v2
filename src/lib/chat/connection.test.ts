@@ -239,4 +239,30 @@ describe("chat connection: read receipts", () => {
 
     expect(chat.useRoomsStore.getState().reads).toEqual({ r1: { u2: "2026-10-25T05:00:01Z" } });
   });
+
+  it("flags the list stale for a sender the room does not list, who joined by invite", async () => {
+    const chat = await load();
+    chat.useRoomsStore.getState().setRooms([
+      {
+        id: "r1",
+        type: "GROUP",
+        name: "study",
+        lastMessageAt: null,
+        expiresAt: null,
+        members: [
+          { userId: "u1", nickname: "Alice", profileImageUrl: null },
+          { userId: "u2", nickname: "Bob", profileImageUrl: null },
+        ],
+      },
+    ]);
+    chat.acquireChat({ notify: vi.fn() });
+    const socket = FakeWebSocket.latest();
+    socket.open();
+
+    socket.emit("new_message", server("m1", "r1", "2026-10-25T05:00:01Z")); // from u2, a member
+    expect(chat.useRoomsStore.getState().stale).toBe(false);
+
+    socket.emit("new_message", { ...server("m2", "r1", "2026-10-25T05:00:02Z"), senderId: "u3" });
+    expect(chat.useRoomsStore.getState().stale).toBe(true);
+  });
 });

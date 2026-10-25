@@ -23,6 +23,11 @@ interface RoomsState {
    * appear only after a member reads while this tab is connected.
    */
   reads: Record<string, Record<string, string>>;
+  /**
+   * "roomId:senderId" pairs the list was already refetched for, so a sender
+   * the refetched list still lacks cannot trigger refetch after refetch.
+   */
+  askedSenders: Record<string, true>;
 
   /**
    * Stores a freshly fetched list and clears `stale`. A lastMessageAt that a
@@ -36,8 +41,12 @@ interface RoomsState {
    */
   upsertRoom: (room: Room) => void;
   removeRoom: (roomId: string) => void;
-  /** Moves lastMessageAt forward for a new message, or flags the list stale for an unknown room. */
-  touchRoom: (roomId: string, createdAt: string) => void;
+  /**
+   * Moves lastMessageAt forward for a new message. Flags the list stale for an
+   * unknown room, and for a sender the room does not list: someone who joined
+   * by invite, which the server announces to nobody (once per room and sender).
+   */
+  touchRoom: (roomId: string, createdAt: string, senderId?: string) => void;
   /** Asks the list owner to refetch, e.g. after joining a room by invite. */
   markStale: () => void;
   setCurrentRoom: (roomId: string | null) => void;
@@ -57,6 +66,7 @@ export const useRoomsStore = create<RoomsState>((set) => ({
   currentRoomId: null,
   stale: false,
   reads: {},
+  askedSenders: {},
 
   setRooms: (rooms) =>
     set((state) => ({
@@ -94,15 +104,21 @@ export const useRoomsStore = create<RoomsState>((set) => ({
       return { reads, rooms: state.rooms ? state.rooms.filter((r) => r.id !== roomId) : state.rooms };
     }),
 
-  touchRoom: (roomId, createdAt) =>
+  touchRoom: (roomId, createdAt, senderId) =>
     set((state) => {
       if (!state.rooms) return state; // the first load will bring it
       const room = state.rooms.find((r) => r.id === roomId);
       if (!room) return { stale: true };
-      if (room.lastMessageAt && compareInstants(room.lastMessageAt, createdAt) >= 0) return state;
-      return {
-        rooms: state.rooms.map((r) => (r === room ? { ...r, lastMessageAt: createdAt } : r)),
-      };
+      const next: Partial<RoomsState> = {};
+      if (!room.lastMessageAt || compareInstants(room.lastMessageAt, createdAt) < 0) {
+        next.rooms = state.rooms.map((r) => (r === room ? { ...r, lastMessageAt: createdAt } : r));
+      }
+      const asked = `${roomId}:${senderId}`;
+      if (senderId && !room.members.some((m) => m.userId === senderId) && !state.askedSenders[asked]) {
+        next.stale = true;
+        next.askedSenders = { ...state.askedSenders, [asked]: true };
+      }
+      return next.rooms || next.stale ? next : state;
     }),
 
   markStale: () => set({ stale: true }),
@@ -115,5 +131,5 @@ export const useRoomsStore = create<RoomsState>((set) => ({
       return { reads: { ...state.reads, [roomId]: { ...state.reads[roomId], [userId]: lastReadAt } } };
     }),
 
-  reset: () => set({ rooms: null, currentRoomId: null, stale: false, reads: {} }),
+  reset: () => set({ rooms: null, currentRoomId: null, stale: false, reads: {}, askedSenders: {} }),
 }));

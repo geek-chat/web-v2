@@ -121,3 +121,34 @@ describe("rooms store: read points", () => {
     expect(store().reads).toEqual({ r2: { u2: "2026-10-25T05:00:00Z" } });
   });
 });
+
+describe("rooms store and members who joined by invite", () => {
+  const group: Room = {
+    id: "g1",
+    type: "GROUP",
+    name: "study",
+    lastMessageAt: null,
+    expiresAt: null,
+    members: [{ userId: "u1", nickname: "Alice", profileImageUrl: null }],
+  };
+
+  beforeEach(() => {
+    store().reset();
+  });
+
+  it("refetches the list once for a sender the room does not list", () => {
+    store().setRooms([group]);
+
+    store().touchRoom("g1", "2026-10-25T05:00:00Z", "u1");
+    expect(store().stale).toBe(false);
+
+    store().touchRoom("g1", "2026-10-25T05:00:01Z", "u3");
+    expect(store().stale).toBe(true);
+    expect(store().rooms?.[0].lastMessageAt).toBe("2026-10-25T05:00:01Z");
+
+    // The refetched list still lacks u3: no refetch after refetch.
+    store().setRooms([group]);
+    store().touchRoom("g1", "2026-10-25T05:00:02Z", "u3");
+    expect(store().stale).toBe(false);
+  });
+});
