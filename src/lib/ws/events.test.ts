@@ -52,7 +52,7 @@ describe("parseServerEvent", () => {
 });
 
 describe("isConnectRejectionCode", () => {
-  it("accepts only the five codes sent before a 1008 close", () => {
+  it("accepts only the connection-level codes", () => {
     for (const code of ["NO_TOKEN", "TOKEN_EXPIRED", "INVALID_TOKEN", "RATE_LIMITED", "MAX_CONNECTIONS"]) {
       expect(isConnectRejectionCode(code)).toBe(true);
     }
