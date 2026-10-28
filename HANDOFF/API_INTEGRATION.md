@@ -57,9 +57,9 @@ NEXT_PUBLIC_WS_URL=wss://api.<your-domain>/ws
 
 | Method | Path | Auth | Request | Response |
 |---|---|---|---|---|
-| GET | `/api/rooms` | Yes | — | `[{id, type, name, lastMessageAt, expiresAt, members: [{userId, nickname, profileImageUrl}]}]` |
+| GET | `/api/rooms` | Yes | — | `[{id, type, name, lastMessageAt, expiresAt, members: [{userId, nickname, profileImageUrl, lastReadAt}]}]`. `lastReadAt`은 그 멤버가 마지막으로 읽은 메시지의 createdAt이고 읽은 적 없으면 null (server-v2 `bf2c85d`). 읽음 표시의 시작값이 된다 |
 | POST | `/api/rooms` | Yes | `{memberIds, name?, ttlHours?}` | `{id, type, name, expiresAt, members: [{userId, nickname}]}` |
-| GET | `/api/rooms/:id/messages?cursor=&limit=&direction=` | Yes | query | `[{id, senderId, senderNickname, content, type, createdAt, expiresAt}]` |
+| GET | `/api/rooms/:id/messages?cursor=&limit=&direction=` | Yes | query | `[{id, clientMessageId, senderId, senderNickname, content, type, createdAt, expiresAt, replyToMessageId, burnAfterRead}]`. `clientMessageId`는 보낸 쪽의 멱등성 키 (`bf2c85d`). ack를 잃은 이 탭의 행을 서버 행으로 합치는 데 쓴다 |
 
 POST 규칙:
 - `memberIds.length == 1 && !name` → DIRECT
@@ -225,6 +225,7 @@ wss://api.<domain>/ws?token=<access_token>      // prod
 
 | type | data | 처리 |
 |---|---|---|
+| `connected` | `{userId, roomIds}` | 수락 신호. 서버가 연결을 받고 방에 등록한 뒤 한 번 보낸다 (`bf2c85d`). 이 프레임에서 `open`이 되고 backfill이 돈다 |
 | `message_ack` | `{clientMessageId, serverId}` | optimistic UI에서 임시 메시지를 `serverId`로 교체 |
 | `new_message` | `{id, roomId, senderId, content, type, createdAt, expiresAt, replyToMessageId, burnAfterRead}` | 메시지 리스트에 추가. `replyToMessageId`가 있으면 인용 표시 |
 | `typing_indicator` | `{roomId, userId}` | 3초 동안 "입력 중..." 표시 |
@@ -237,7 +238,7 @@ wss://api.<domain>/ws?token=<access_token>      // prod
 
 ### 에러 코드
 
-앞의 다섯 개(`NO_TOKEN`부터 `MAX_CONNECTIONS`까지)는 연결 직후 검사에서 나온다. 서버는 이 `error`를 보낸 직후 close code 1008로 연결을 끊는다 (server-v2 `ChatWebSocketHandler.reject`). 1008만 봐서는 원인을 알 수 없으니 직전 `error.code`로 나눈다. 처리 규칙 정본은 `.claude/RULES.md` R2다.
+앞의 여섯 개(`NO_TOKEN`부터 `ACCOUNT_WITHDRAWN`까지)는 연결 수준 코드다. 서버는 이 `error`를 보낸 직후 1008로 닫는다. 연결 직후 검사(server-v2 `ChatWebSocketHandler.reject`)와, 탈퇴가 커밋된 뒤 그 사용자의 열린 연결(`WithdrawnUserDisconnector`)이 그렇다. 운영(Cloudflare → Render)에서는 이 close 프레임이 오지 않고 약 20초 뒤 1006으로 끊긴다(2026-10-28 실측). 그래서 클라이언트는 프레임을 받자마자 직접 닫고 그 코드로 판단한다. 나머지 코드가 오면 연결은 유지된다. 두 무리는 계약으로 겹치지 않는다(server-v2 `docs/WEBSOCKET.md` §4.9). 처리 규칙 정본은 `.claude/RULES.md` R2다.
 
 | code | 의미 | 클라 처리 |
 |---|---|---|
@@ -246,7 +247,8 @@ wss://api.<domain>/ws?token=<access_token>      // prod
 | `INVALID_TOKEN` | JWT 변조 | refresh 1회 시도, 실패하면 `clearSession()` + 로그인 |
 | `RATE_LIMITED` | 재연결 너무 빠름 (2초 미만) | refresh 없이 2초 이상 + jitter 대기 후 재연결 |
 | `MAX_CONNECTIONS` | 동시 4개 시도 (상한 3) | 재연결하지 않음. 다른 탭을 닫으라는 안내 + 수동 재시도 |
-| `NOT_AUTHENTICATED` | SecurityContext 없음 | 재연결 |
+| `ACCOUNT_WITHDRAWN` | 탈퇴한 계정. 열린 연결에도 온다 | 재연결하지 않음. 세션을 끝내고 로그인 화면으로 (같은 토큰은 만료까지 15분 동안 거부된다) |
+| `NOT_AUTHENTICATED` | 연결에 사용자 정보가 없음 (서버 쪽 이상) | 연결은 유지된다. 클라이언트는 따로 처리하지 않는다 |
 | `INVALID_FORMAT` | JSON 파싱 실패 | 클라 버그 — 로그 |
 | `UNKNOWN_EVENT` | 미지의 type | 클라 버그 |
 | `INVALID_DATA` | 필수 필드 누락 | 클라 버그. 요청에 `clientMessageId`가 있었으면 함께 오니 그 대기 메시지를 failed로 |
@@ -259,8 +261,9 @@ wss://api.<domain>/ws?token=<access_token>      // prod
 요점:
 - 래퍼 하나가 리스너를 계속 들고 있고, 시도할 때마다 새 `WebSocket`에 콜백을 다시 단다. 교체된 소켓의 콜백은 무시한다.
 - 토큰은 시도할 때마다 storage에서 읽는다. 곧 만료될 토큰이면 연결 전에 공용 `refreshOnce()`로 갱신한다.
-- 1008은 직전 거부 코드로 나눈다. `MAX_CONNECTIONS`는 `retry()`를 기다리고, `RATE_LIMITED`는 refresh 없이 백오프한다. 인증 코드는 refresh를 한 번 하고, 다음 시도도 같은 이유로 거부되면 세션을 끝낸다.
-- 백오프는 2초에서 시작해 30초까지 두 배씩 늘고 jitter가 붙는다. 10초 유지되거나 error가 아닌 프레임이 와야 되돌린다.
+- 연결 수준 오류 프레임을 받으면 그 자리에서 소켓을 닫고 코드로 나눈다. close 코드는 보지 않는다(운영에서는 1008 대신 1006이 온다). `MAX_CONNECTIONS`는 `retry()`를 기다리고, `RATE_LIMITED`는 refresh 없이 백오프하고, `ACCOUNT_WITHDRAWN`은 세션을 끝낸다. 인증 코드는 refresh를 한 번 하고, 다음 시도도 같은 이유로 거부되면 세션을 끝낸다. 프레임 없이 온 1008도 refresh를 한 번 한다.
+- 수락은 `connected` 프레임으로 안다. 그 전 서버를 위해, 1초 동안 거부가 없으면 수락으로 보는 대비책을 남겼다.
+- 백오프는 2초에서 시작해 30초까지 두 배씩 늘고 jitter가 붙는다. 10초 유지되거나 `error`와 `connected`가 아닌 프레임이 와야 되돌린다. 서버 heartbeat(25초마다 ping, 60초 무응답이면 4500으로 닫음)로 끊긴 연결도 백오프로 다시 붙는다.
 - 상태는 `idle`, `connecting`, `open`(서버가 받아들임), `reconnecting`, `blocked`(`MAX_CONNECTIONS`), `closed` 여섯 가지다.
 - `send()`는 열린 소켓이 없으면 `false`를 돌려준다.
 

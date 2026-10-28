@@ -1,10 +1,12 @@
-# Session Progress — last updated 2026-10-26
+# Session Progress — last updated 2026-10-28
 
 > **다음 세션 진입자에게**: 이 파일이 첫 진입점입니다. 5분 안에 컨텍스트를 잡고 이어 작업하세요.
 
 ---
 
 ## Current state (one-liner)
+
+**server-v2 `bf2c85d` 계약 반영 (2026-10-28)**: 운영에서 웹소켓 거부 처리가 돌지 않던 버그를 고쳤고(오류 프레임으로 판단), `connected`, `lastReadAt`, `clientMessageId`, `ACCOUNT_WITHDRAWN`을 반영했다. 아래 "2026-10-28" 절에 있다.
 
 **디자인 시스템 완료 (2026-10-26)**: 드롭다운 칸이 입력칸과 어긋난 일을 계기로, 버튼과 폼 요소를 `src/components/ui/`의 공용 컴포넌트로만 쓰게 만들었다(사용자 선택: "자체 공용 컴포넌트 + lint 가드, 단계별"). 네 단계를 모두 커밋했고, 이제 그 밖에서 날 `<button>`, `<input>`, `<select>`, `<textarea>`를 쓰면 lint가 막는다(RULES.md R7). push는 운영 배포로 이어지므로 늘 사용자 승인을 받고 한다(`git log origin/main..HEAD`가 비어 있지 않으면 올리지 않은 커밋이 있다).
 
@@ -31,6 +33,49 @@ Phase 1 결과: 가입과 로그인, single-flight 토큰 갱신, OAuth 콜백 4
 | tailwind-merge | 3.7.0 (2026-10-26 도입, `src/lib/cn.ts`. 지원 범위는 Tailwind v4.0~v4.3) |
 | vitest | 5.0.5 (jsdom 30.1.3, @testing-library/react 16.3.3, @vitejs/plugin-react 6.1.2) |
 | @types/node | 24.19.2 (vitest 5의 peer 요구, 로컬 런타임 Node 24.21에 맞춤) |
+
+---
+
+## 2026-10-28 server-v2 `bf2c85d` 계약 반영
+
+server-v2 세션이 PR #18~#24가 운영에 올라갔다고 알려 왔다(`bf2c85d`, 2026-10-26 02:09 KST). 계약은 `bf2c85d` 코드에서 확인했고, 사용자가 네 묶음을 모두 반영하기로 했다("1~4 모두").
+
+### 운영에서 찾은 버그
+
+운영 웹 페이지에서 토큰 없이 연결해 쟀다. 오류 프레임(`NO_TOKEN`)은 0.45초에 오는데 close는 20.45초 뒤 1006(`wasClean: false`)이었다. 오류 직후 클라이언트가 닫으면 0.6초에 1000으로 끝났다. 클라이언트는 close가 1008일 때만 거부 코드를 봐서, 운영에서는 거부 분기가 전혀 돌지 않았다. `MAX_CONNECTIONS`는 토스트 없이 재연결을 반복했고, `INVALID_TOKEN`은 세션을 끝내지 않고 재시도했고, `TOKEN_EXPIRED`는 20초를 기다렸다. server-v2는 원인을 운영 경로(Cloudflare → Render)로 보고 server-v2#25에 기록했다.
+
+### 커밋
+
+| 커밋 | 내용 |
+|---|---|
+| `837a81d` | 연결 수준 오류 프레임을 받으면 바로 닫고 그 코드로 판단한다. `ACCOUNT_WITHDRAWN`은 재연결 없이 세션을 끝낸다. 프레임 없는 1008은 refresh 한 번, 그 밖의 close(1006, 4500, 1011)는 백오프. RULES R2 |
+| `9f24adf` | `connected` 프레임을 수락 신호로 쓴다. 안정 판정(백오프 초기화)에는 넣지 않는다. 1초 창은 이전 서버용 대비책. RULES R2 |
+| `78ee4fc` | `GET /api/rooms` 멤버의 `lastReadAt`으로 읽음 표시를 시작한다(앞으로만). RULES R6 |
+| `bdf702e` | REST 메시지의 `clientMessageId`로, ack를 잃은 대기 행이나 실패 행을 서버 행으로 합친다. RULES R6 |
+| `2543590` | 내 탭에서 탈퇴할 때 `ACCOUNT_WITHDRAWN` 프레임이 탈퇴 응답보다 먼저 오면 "세션 만료"와 "탈퇴 완료" 토스트가 겹치던 경쟁(`837a81d`가 만듦). 두 토스트가 같은 id(`lib/auth/notices.ts`의 `SESSION_ENDED_TOAST_ID`)를 써서 나중 것이 앞의 것을 덮는다 |
+| `4057be0` | `events.test`의 기존 케이스 제목만 "accepts only the connection-level codes"로 바꿨다(코드가 여섯 개가 됨, 사용자 승인) |
+
+새 필드(`lastReadAt`, `clientMessageId`)는 스키마에서 없어도 되게 받는다. 기존 테스트 픽스처에 없고, 서버가 예전 버전이면 목록 전체가 파싱에 실패하기 때문이다. 기존 테스트는 고치지 않았다.
+
+### 검증
+
+- 묶음마다 `memguard -- npm test`, tsc, lint, build 모두 exit 0이었다(토스트 수정 뒤 마지막 53개 파일, 322개 테스트).
+- 새 테스트는 바뀐 코드를 되돌리면 실패하는 것을 확인했다. 옛 `client.ts`에서는 거부 테스트 3개, `connected`가 백오프를 초기화하게 바꾸면 백오프 테스트, 합치기를 끄면 합치기 테스트 2개, 탈퇴 토스트의 id를 빼면 그 테스트가 실패했다.
+- 로컬 server-v2 `bf2c85d`(scratchpad에서 빌드)로 앱 화면을 확인했다.
+
+| 항목 | 결과 |
+|---|---|
+| `connected` | 서버가 수락 직후 보낸다. dev 콘솔에 버린 프레임 경고가 없다(콘솔 기록은 양성 대조로 확인) |
+| 읽음 표시 시작값 | 밥이 읽은 뒤 새로 고쳐도 "1명 읽음"이 바로 보인다 |
+| `MAX_CONNECTIONS` | 연결 3개를 붙잡고 브라우저를 붙이자 토스트와 "다시 시도"가 떴다. 서버의 거부 기록은 1번뿐(재연결 반복 없음). 붙잡은 연결이 닫힌 뒤 "다시 시도"로 다시 붙었다 |
+| `ACCOUNT_WITHDRAWN` | 시험 사용자 Wanda를 탈퇴시키자 열린 탭이 3초 안에 `/login`으로 갔고 토큰이 지워졌다. 재연결은 없었고, 그 사이 REST 요청도 없었다(웹소켓 경로로 끝남) |
+
+확인하지 못한 것: 운영 앱에서의 거부 처리(운영 로그인을 하지 않으므로 단위 테스트와 운영 원시 측정뿐), ack 유실 합치기와 내 탭 탈퇴 토스트 경쟁의 앱 화면(둘 다 단위 테스트만).
+
+### 서버 쪽 남은 것
+
+- `POST /api/rooms`와 `POST /api/invite/{code}/join`은 `CreateRoomResponse`(멤버는 `userId`, `nickname`)를 돌려줘서 `lastReadAt`이 없다. server-v2 세션이 처음엔 세 곳 모두 있다고 알렸는데, web-v2가 코드로 확인해 알리자 문서를 고쳤다(server-v2#25, `f3985ca`). 응답은 바꾸지 않는다. web-v2는 참여 뒤 목록을 다시 받아서 영향이 없다.
+- 탈퇴 사용자 표시: 서버는 닉네임을 `deleted_user_<7hex>`로 바꾸는데, 일반 사용자도 같은 모양의 닉네임을 정할 수 있다(`@Size(1..20)`만 검사). 사용자가 명시 필드를 두기로 정했다(server-v2 세션이 전달, 2026-10-28). 멤버 객체(`GET /api/rooms`, `POST /api/rooms`, `POST /api/invite/{code}/join`)에 `withdrawn: Boolean`, 메시지(`GET /api/rooms/{id}/messages`)에 `senderWithdrawn: Boolean`이 생기고, WS 이벤트에는 넣지 않는다(탈퇴한 사용자는 연결이 거부됨). server-v2가 작업 중이고 배포되면 알려 오기로 했다. 그때까지 web-v2는 서버 값을 그대로 보인다.
 
 ---
 
@@ -75,7 +120,7 @@ Phase 1 결과: 가입과 로그인, single-flight 토큰 갱신, OAuth 콜백 4
 - 지원 범위: tailwind-merge 3.x는 Tailwind v4.0~v4.3을 지원한다(패키지 README). Tailwind를 그 너머로 올리기 전에 다시 확인한다
 - 되돌리기: `npm uninstall tailwind-merge`와 2단계 커밋 revert(네이버 버튼의 `!`도 함께 돌아온다)
 
-### server-v2 세션이 예고한 계약 (머지 전)
+### server-v2 세션이 예고한 계약 (2026-10-28에 모두 반영, 위 절)
 
 | 항목 | 예고 | 머지되면 web-v2가 할 일 |
 |---|---|---|
@@ -419,14 +464,14 @@ LOW-2 수정 후보 (미실측): 지금처럼 즉시 지운 뒤 `queueMicrotask`
 | S8, S9 | server-v2 인증 | 보안 항목 2건. 2026-10-25에 사용자에게 직접 보고했다. 이 저장소는 공개라서 고쳐질 때까지 상세는 적지 않는다. **운영 배포 전 처리 권장** |
 | S16 | server-v2 | 보안 항목 1건. 2026-10-25에 사용자에게 직접 보고했다. 같은 이유로 상세는 적지 않는다. server-v2#16(`185fad0`)으로 고쳐져 2026-10-25 15:18Z 운영에 배포됐다 |
 | S10 | server-v2 `SecurityConfig.securityFilterChain` | `/error`가 허용 목록에 없고 entry point가 본문 없는 401을 돌려준다. 그래서 공개 엔드포인트의 bean validation 실패(400)가 401로 바뀌어 보일 수 있다 (설정 기준, 실측 전). web-v2는 서버와 같은 검증을 폼에서 먼저 해서 영향이 작다. 2026-10-25 운영에서 실측(`GET /auth/login`이 405 대신 401). server-v2#14로 고쳐 운영에 배포됐다(2026-10-25, `GET /auth/login`이 405). 이제 400, 404, 405는 `{statusCode, message, error}`, 500과 403은 Spring 기본 본문으로 나온다. web-v2는 바꿀 것이 없음을 코드로 확인했다(`readErrorBody`가 계약 밖 본문을 버림) |
-| S11 | server-v2 `ChatEventListener.onMessageExpired`, `MessageExpirationScheduler` | 스케줄러가 `@Transactional` 안에서 이벤트를 내고 리스너는 `@Async @EventListener`라서, `message_expired`가 삭제 커밋보다 먼저 나갈 수 있다. 그 사이 REST가 지운 메시지를 돌려준다. web-v2는 tombstone으로 막았다. `AFTER_COMMIT`으로 바꾸면 근본 해결 |
-| S12 | server-v2 `MessageResponse` (`MessageDto.kt`) | `clientMessageId`가 없어서 ack를 잃은 메시지를 REST 행과 맞출 수 없다. failed 행과 서버 행이 함께 보인다 |
-| S13 | server-v2 `ChatWebSocketHandler.afterConnectionEstablished` | 연결을 받아들여도 아무 프레임을 보내지 않아서, 클라이언트는 1초 동안 거부가 없으면 수락으로 본다. `connected` 같은 프레임이 있으면 추정할 필요가 없다 |
-| S14 | server-v2 websocket 모듈 | 로그아웃과 탈퇴 때 그 사용자의 소켓을 닫지 않는다(닫는 곳은 `reject` 하나). heartbeat 설정도 없어서 끊긴 연결이 열린 것처럼 남을 수 있다. 배포 환경 프록시의 idle timeout도 확인이 필요하다 |
-| S15 | server-v2 `RoomMemberResponse`, 방 목록 API | 멤버의 읽음 시각(`lastReadAt`)을 주는 REST가 없다. 새로 연 화면은 접속 뒤 `read_update`가 올 때까지 읽음 표시를 그릴 수 없다 |
+| S11 | server-v2 `ChatEventListener.onMessageExpired`, `MessageExpirationScheduler` | 스케줄러가 `@Transactional` 안에서 이벤트를 내고 리스너는 `@Async @EventListener`라서, `message_expired`가 삭제 커밋보다 먼저 나갈 수 있다. 그 사이 REST가 지운 메시지를 돌려준다. web-v2는 tombstone으로 막았다. `AFTER_COMMIT`으로 바꾸면 근본 해결 server-v2 `bf2c85d`부터 삭제 커밋 뒤에 보낸다. tombstone은 그대로 둔다. |
+| S12 | server-v2 `MessageResponse` (`MessageDto.kt`) | `clientMessageId`가 없어서 ack를 잃은 메시지를 REST 행과 맞출 수 없다. failed 행과 서버 행이 함께 보인다 `bf2c85d`로 REST 메시지에 들어왔고 web-v2 `bdf702e`에서 반영했다. |
+| S13 | server-v2 `ChatWebSocketHandler.afterConnectionEstablished` | 연결을 받아들여도 아무 프레임을 보내지 않아서, 클라이언트는 1초 동안 거부가 없으면 수락으로 본다. `connected` 같은 프레임이 있으면 추정할 필요가 없다 `bf2c85d`로 `connected` 프레임이 생겼고 web-v2 `9f24adf`에서 반영했다. |
+| S14 | server-v2 websocket 모듈 | 로그아웃과 탈퇴 때 그 사용자의 소켓을 닫지 않는다(닫는 곳은 `reject` 하나). heartbeat 설정도 없어서 끊긴 연결이 열린 것처럼 남을 수 있다. 배포 환경 프록시의 idle timeout도 확인이 필요하다 `bf2c85d`로 탈퇴 때 `ACCOUNT_WITHDRAWN`을 보내고 닫으며, 25초 ping과 60초 무응답 4500 heartbeat가 생겼다. web-v2 `837a81d`에서 반영했다. |
+| S15 | server-v2 `RoomMemberResponse`, 방 목록 API | 멤버의 읽음 시각(`lastReadAt`)을 주는 REST가 없다. 새로 연 화면은 접속 뒤 `read_update`가 올 때까지 읽음 표시를 그릴 수 없다 `bf2c85d`로 `GET /api/rooms` 멤버에 들어왔고(만들기와 참여 응답에는 없음) web-v2 `78ee4fc`에서 반영했다. |
 | S17 | server-v2 `AuthController.googleStart` | `scope`에 공백이 든 `"openid email profile"`을 넣고 `.build(true)`로 만들어서 `IllegalArgumentException`이 난다. `/error`가 막혀 있어서(S10) 응답은 본문 없는 401이다. 2026-10-25 Render에서 `/auth/google`은 401, `/auth/naver`는 302였고, Spring 7.0.9 jshell로 예외를 재현했다. `.encode().build()`로 바꾸면 생성된다. 이 경로의 테스트가 없다. server-v2#15로 고쳐 운영에 배포됐다. 2026-10-25 13:13Z 뒤로 `/auth/google`이 302로 `accounts.google.com`에 보낸다(client_id 있음, redirect_uri는 Render 콜백, scope 인코딩됨). 그 전 몇 분은 #14만 떠 있어서 같은 예외가 500 Whitelabel 페이지로 보였다. Google 로그인 끝까지는 사용자가 확인한다 |
 | S18 | server-v2 `InviteLinkService` | 초대 링크가 GROUP 방으로 제한되지 않는다. 링크는 그 방 멤버만 만들 수 있지만, 1:1 방 멤버가 만들면 세 번째 사람이 그 1:1 방에 들어올 수 있다. web-v2는 그룹 방에서만 초대 UI를 띄운다. server-v2#17(`d623483`)로 고쳐져 2026-10-25 15:24Z 운영에 배포됐다. 이제 1:1 방에서 만들면 400 "Invite links are only available for group rooms"이고, 그 전에 만든 1:1 방 링크로 참여하면 web-v2는 쓸 수 없는 링크로 안내한다(`552dd87`) |
-| S19 | server-v2 `InviteLinkService.joinByInviteCode` | 확인한 뒤 넣는 방식이라 락이 없어서, 동시에 참여하면 `maxUses`나 정원을 넘을 수 있다(낮음). server-v2 PR #18에서 작업 중(2026-10-26 기준 머지 전) |
+| S19 | server-v2 `InviteLinkService.joinByInviteCode` | 확인한 뒤 넣는 방식이라 락이 없어서, 동시에 참여하면 `maxUses`나 정원을 넘을 수 있다(낮음). server-v2 PR #18로 운영에 반영됐다(`bf2c85d`) |
 | S7 | server-v2 `ChatErrorMapping.kt` | 에러 본문의 `error`가 HTTP reason phrase라서 같은 상태 코드를 쓰는 도메인 에러(예: 가입 409의 유저네임과 이메일)를 구분하려면 영어 메시지 앞부분을 봐야 한다. 안정적인 `code` 필드가 있으면 클라이언트가 메시지 문구에 기대지 않아도 된다 |
 | T1 | `geek-chat-web` main `559d170` | v2가 리다이렉트하는 `/auth/oauth-link`, `/auth/oauth-complete`, `/auth/error` 라우트 파일이 없음. v1 연동은 `/auth/success#linking_required=true` 형식 (`app/auth/success.tsx:18-33`). web-internal 세션에 공유함. 10-25 기준 v1 `feat/v2-transport` 브랜치(`76cb0b1`)에서 처리 중이고 아직 머지 전 |
 
@@ -462,7 +507,7 @@ ea0f041 feat(env): add env validation + strict CSP headers + Turbopack root pin
 
 ## In-flight
 
-없음. 디자인 시스템 네 단계는 `92cf89e`부터 `f7357a6`까지와 그 문서 커밋으로 끝났다. 이 묶음은 `5421b36` 뒤의 `552dd87`, `92cf89e`, `150e5b4`, `a203b66`, `3b1617f`, `b661f98`, `f7357a6`과 문서 커밋이다. 올라갔는지는 `git log origin/main..HEAD`로 본다(비어 있으면 올라간 것).
+없음. 2026-10-28 계약 반영은 `837a81d`, `9f24adf`, `78ee4fc`, `bdf702e`와 그 문서 커밋으로 끝났다. 올라갔는지는 `git log origin/main..HEAD`로 본다(비어 있으면 올라간 것). 디자인 시스템 네 단계는 `92cf89e`부터 `f7357a6`까지로 끝나 2026-10-26에 올라갔다(`83f5baf`).
 
 Phase 3은 `e4f08a7`, `b08dd2d`, `52b28cd`와 문서 커밋으로 끝났다.
 
@@ -470,7 +515,7 @@ Phase 3은 `e4f08a7`, `b08dd2d`, `52b28cd`와 문서 커밋으로 끝났다.
 
 ## Next session — start here
 
-> 지금 할 일: `git log origin/main..HEAD`가 비어 있지 않으면 push 승인부터 받는다 → 아래 3번(남은 확인과 출시 전 체크리스트). server-v2 세션이 S12~S15 머지를 알려 오면 위 "server-v2 세션이 예고한 계약" 표대로 반영한다. 새 화면에 버튼이나 폼 요소가 필요하면 `src/components/ui/`부터 본다(RULES.md R7, `/dev/ui`).
+> 지금 할 일: `git log origin/main..HEAD`가 비어 있지 않으면 push 승인부터 받는다 → 아래 3번(남은 확인과 출시 전 체크리스트). server-v2가 `withdrawn`, `senderWithdrawn` 필드를 배포했다고 알려 오면 탈퇴한 사람을 "탈퇴한 사용자"로 보이게 한다(위 2026-10-28 절). 새 화면에 버튼이나 폼 요소가 필요하면 `src/components/ui/`부터 본다(RULES.md R7, `/dev/ui`).
 
 ### 0. 환경 복구 (5분)
 
@@ -585,7 +630,7 @@ R2의 1008 분기는 바뀌지 않는다. PR #11에서도 close는 `reject`의 `
 | S8, S9 서버 보안 항목 | 사용자가 처리 담당을 정함. 운영 배포 전 처리 권장. S16은 2026-10-25에 고쳐져 배포됨 |
 | S18 그룹 전용 초대 | ✅ server-v2#17 운영 배포(2026-10-25 15:24Z). web-v2는 `552dd87`에서 참여 400 문구만 맞췄다 |
 | 리뷰 LOW-2: Next canonical URL에 hash 잔류 | 남김. 위 "코드 리뷰" 절의 수정 후보를 dev에서 실측한 뒤 적용 |
-| Phase 2.1 실측 | ✅ 2.2와 2.3 확인 때 함께 했다 (WS 연결 1개, 다른 사용자의 `new_message` 수신, 서버 재시작 뒤 재연결과 backfill). `MAX_CONNECTIONS` 토스트는 아직 브라우저로 보지 않았다 |
+| Phase 2.1 실측 | ✅ 2.2와 2.3 확인 때 함께 했다 (WS 연결 1개, 다른 사용자의 `new_message` 수신, 서버 재시작 뒤 재연결과 backfill). 2026-10-28 로컬 server-v2 `bf2c85d`로 `MAX_CONNECTIONS` 토스트와 "다시 시도"도 확인했다. |
 | 다른 탭의 로그아웃과 계정 전환 | ✅ `df2f4f0`. 리뷰 HIGH로 올라와서 고쳤다. 다른 탭이 로그아웃하면 이 탭도 로그아웃되고, 다른 계정으로 로그인하면 이 탭도 그 계정으로 바뀐다 |
 | 리뷰 MEDIUM M4: 커서와 커밋 순서 | ✅ 첫 커서를 5초 겹쳐 잡음 (사용자 승인으로 기존 테스트 기대값 수정) |
 | Vercel 배포 | `web` 프로젝트가 `geek-chat/web-v2`를 배포한다 (2026-10-25 사용자 결정, ARCHITECTURE.md §5). 2026-10-25 Production env를 Render 주소로 바꾸고 다시 배포했다(배포 `9txTEuXJM`, 소스 `501afef`). 확인한 것: CSP `connect-src`, 코드 묶음의 API 주소(`api.invalid` 없음), 로그인 화면의 검증 문구와 콘솔. 로그인 뒤 흐름은 사용자가 직접 확인한다 |
@@ -639,4 +684,4 @@ R2의 1008 분기는 바뀌지 않는다. PR #11에서도 close는 `reject`의 `
 
 ## 한 줄 요약
 
-> **web-v2는 Phase 1(인증), Phase 2(WS, 방 목록, 채팅 화면), Phase 3(초대, 임시 방, 자동 삭제)를 마쳤고, 디자인 시스템(공용 컴포넌트와 lint 가드, 2026-10-26)도 마쳤다. 다음은 출시 전 체크리스트다. 운영은 Vercel `web` 프로젝트이고 Render의 server-v2를 쓴다. 환경 복구 → 기준선 확인 → 로컬 백엔드(위 "로컬 백엔드 띄우는 법") → 남은 확인(위 "다음 세션" 3번) → 출시 전 체크리스트 순서로 진행한다. 끝날 때 refresh-context 스킬 호출 필수.**
+> **web-v2는 Phase 1(인증), Phase 2(WS, 방 목록, 채팅 화면), Phase 3(초대, 임시 방, 자동 삭제)를 마쳤고, 디자인 시스템(공용 컴포넌트와 lint 가드, 2026-10-26)과 server-v2 `bf2c85d` 계약 반영(2026-10-28)도 마쳤다. 다음은 출시 전 체크리스트다. 운영은 Vercel `web` 프로젝트이고 Render의 server-v2를 쓴다. 환경 복구 → 기준선 확인 → 로컬 백엔드(위 "로컬 백엔드 띄우는 법") → 남은 확인(위 "다음 세션" 3번) → 출시 전 체크리스트 순서로 진행한다. 끝날 때 refresh-context 스킬 호출 필수.**
