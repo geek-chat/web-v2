@@ -18,9 +18,10 @@ interface RoomsState {
   currentRoomId: string | null;
   stale: boolean;
   /**
-   * Read points from read_update: roomId → userId → lastReadAt (the createdAt
-   * of the message read). The server exposes no starting value, so receipts
-   * appear only after a member reads while this tab is connected.
+   * Read points: roomId → userId → lastReadAt (the createdAt of the message
+   * read). They start from the members' lastReadAt in the room list (server-v2
+   * bf2c85d) and move forward with read_update, never back: a list fetched
+   * before a read_update can land after it.
    */
   reads: Record<string, Record<string, string>>;
   /**
@@ -31,7 +32,8 @@ interface RoomsState {
 
   /**
    * Stores a freshly fetched list and clears `stale`. A lastMessageAt that a
-   * new_message moved past the fetched value while it loaded is kept.
+   * new_message moved past the fetched value while it loaded is kept. The
+   * members' lastReadAt move their read points forward.
    */
   setRooms: (rooms: Room[]) => void;
   /**
@@ -61,6 +63,18 @@ function later(a: string | null, b: string | null): string | null {
   return compareInstants(a, b) >= 0 ? a : b;
 }
 
+/** Moves one member's read point forward only; returns `reads` itself when it does not move. */
+function advanceRead(
+  reads: RoomsState["reads"],
+  roomId: string,
+  userId: string,
+  lastReadAt: string,
+): RoomsState["reads"] {
+  const held = reads[roomId]?.[userId];
+  if (held && compareInstants(held, lastReadAt) >= 0) return reads;
+  return { ...reads, [roomId]: { ...reads[roomId], [userId]: lastReadAt } };
+}
+
 export const useRoomsStore = create<RoomsState>((set) => ({
   rooms: null,
   currentRoomId: null,
@@ -69,13 +83,22 @@ export const useRoomsStore = create<RoomsState>((set) => ({
   askedSenders: {},
 
   setRooms: (rooms) =>
-    set((state) => ({
-      rooms: rooms.map((room) => {
-        const held = state.rooms?.find((r) => r.id === room.id);
-        return held ? { ...room, lastMessageAt: later(room.lastMessageAt, held.lastMessageAt) } : room;
-      }),
-      stale: false,
-    })),
+    set((state) => {
+      let reads = state.reads;
+      for (const room of rooms) {
+        for (const { userId, lastReadAt } of room.members) {
+          if (lastReadAt) reads = advanceRead(reads, room.id, userId, lastReadAt);
+        }
+      }
+      return {
+        rooms: rooms.map((room) => {
+          const held = state.rooms?.find((r) => r.id === room.id);
+          return held ? { ...room, lastMessageAt: later(room.lastMessageAt, held.lastMessageAt) } : room;
+        }),
+        reads,
+        stale: false,
+      };
+    }),
 
   upsertRoom: (room) =>
     set((state) => {
@@ -126,9 +149,8 @@ export const useRoomsStore = create<RoomsState>((set) => ({
 
   markRead: (roomId, userId, lastReadAt) =>
     set((state) => {
-      const held = state.reads[roomId]?.[userId];
-      if (held && compareInstants(held, lastReadAt) >= 0) return state;
-      return { reads: { ...state.reads, [roomId]: { ...state.reads[roomId], [userId]: lastReadAt } } };
+      const reads = advanceRead(state.reads, roomId, userId, lastReadAt);
+      return reads === state.reads ? state : { reads };
     }),
 
   reset: () => set({ rooms: null, currentRoomId: null, stale: false, reads: {}, askedSenders: {} }),

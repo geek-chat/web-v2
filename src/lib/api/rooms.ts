@@ -14,6 +14,10 @@ export const roomMemberSchema = z.object({
   userId: z.string(),
   nickname: z.string(),
   profileImageUrl: z.string().nullable(),
+  // When the member last read the room (the createdAt of the message read),
+  // null until they read. Only GET /api/rooms carries it (server-v2 bf2c85d);
+  // older servers leave it out, and it only seeds read receipts.
+  lastReadAt: z.string().nullish(),
 });
 
 export const roomSchema = z.object({

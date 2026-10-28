@@ -151,3 +151,22 @@ describe("createRoom", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });
+
+describe("listRooms since server-v2 bf2c85d", () => {
+  beforeEach(() => {
+    setTokens({ accessToken: makeJwt(Math.floor(Date.now() / 1000) + 3600), refreshToken: "r" });
+  });
+
+  it("keeps each member's lastReadAt, null until they read", async () => {
+    const room = {
+      ...directRoom,
+      members: [
+        { userId: "u1", nickname: "Alice", profileImageUrl: null, lastReadAt: "2026-10-28T10:00:00.123456Z" },
+        { userId: "u2", nickname: "Bob", profileImageUrl: null, lastReadAt: null },
+      ],
+    };
+    installFetch([room]);
+
+    await expect(listRooms()).resolves.toEqual([room]);
+  });
+});

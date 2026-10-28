@@ -152,3 +152,37 @@ describe("rooms store and members who joined by invite", () => {
     expect(store().stale).toBe(false);
   });
 });
+
+describe("rooms store read points (server-v2 bf2c85d)", () => {
+  beforeEach(() => {
+    store().reset();
+  });
+
+  const member = (userId: string, lastReadAt?: string | null) => ({
+    userId,
+    nickname: userId,
+    profileImageUrl: null,
+    lastReadAt,
+  });
+  const withMembers = (members: Room["members"]): Room => ({ ...room("r1", null), members });
+
+  it("starts each member's read point from the list's lastReadAt", () => {
+    store().setRooms([withMembers([member("u1", null), member("u2", "2026-10-28T10:00:00.123456Z"), member("u3")])]);
+
+    expect(store().reads).toEqual({ r1: { u2: "2026-10-28T10:00:00.123456Z" } });
+  });
+
+  it("does not move a read point back when a list fetched earlier lands later", () => {
+    store().markRead("r1", "u2", "2026-10-28T10:05:00Z");
+    store().setRooms([withMembers([member("u2", "2026-10-28T10:00:00Z")])]);
+
+    expect(store().reads.r1.u2).toBe("2026-10-28T10:05:00Z");
+  });
+
+  it("moves a read point forward when a newer list arrives", () => {
+    store().setRooms([withMembers([member("u2", "2026-10-28T10:00:00Z")])]);
+    store().setRooms([withMembers([member("u2", "2026-10-28T10:00:00.5Z")])]);
+
+    expect(store().reads.r1.u2).toBe("2026-10-28T10:00:00.5Z");
+  });
+});
