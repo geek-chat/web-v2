@@ -259,3 +259,52 @@ describe("compareInstants and oldestServerCreatedAt", () => {
     expect(oldestServerCreatedAt(rows())).toBe("2026-10-25T05:00:01.123456Z");
   });
 });
+
+// server-v2 bf2c85d: REST rows carry the sender's clientMessageId (S12).
+describe("messages store and the REST clientMessageId", () => {
+  beforeEach(() => {
+    store().reset();
+  });
+
+  const send = (clientMessageId: string) =>
+    store().addPending({ roomId: ROOM, clientMessageId, senderId: "u1", content: clientMessageId });
+
+  it("replaces a failed row with the REST row that names it", () => {
+    send("c1");
+    store().failMessage("c1");
+
+    store().mergeServerMessages(ROOM, [server("s1", "2026-10-28T10:00:00Z", { senderId: "u1", clientMessageId: "c1" })]);
+
+    expect(rows()).toHaveLength(1);
+    expect(rows()[0]).toMatchObject({ id: "s1", status: "sent", clientMessageId: "c1" });
+  });
+
+  it("folds a failed row and its live copy into one row", () => {
+    send("c1");
+    store().addLiveMessage(ROOM, server("s1", "2026-10-28T10:00:00Z", { senderId: "u1" }));
+    store().failMessage("c1");
+    expect(rows()).toHaveLength(2);
+
+    store().mergeServerMessages(ROOM, [server("s1", "2026-10-28T10:00:00Z", { senderId: "u1", clientMessageId: "c1" })]);
+
+    expect(ids()).toEqual(["s1"]);
+    expect(rows()[0]).toMatchObject({ status: "sent", clientMessageId: "c1" });
+  });
+
+  it("keeps a row the REST page confirmed through a late ack or ack timeout", () => {
+    send("c1");
+    store().mergeServerMessages(ROOM, [server("s1", "2026-10-28T10:00:00Z", { senderId: "u1", clientMessageId: "c1" })]);
+
+    store().ackMessage("c1", "s1");
+    store().failMessage("c1");
+
+    expect(ids()).toEqual(["s1"]);
+    expect(rows()[0].status).toBe("sent");
+  });
+
+  it("leaves other people's rows keyed by their id", () => {
+    store().mergeServerMessages(ROOM, [server("s2", "2026-10-28T10:00:00Z", { clientMessageId: "someone-else" })]);
+
+    expect(rows()[0].clientMessageId).toBeUndefined();
+  });
+});

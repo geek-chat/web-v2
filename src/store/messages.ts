@@ -2,14 +2,15 @@
  * Messages store: one list per room, oldest first (RULES.md R6).
  *
  * Rows arrive from three places, in any order:
- *  - REST pages: server time and senderNickname, no clientMessageId
+ *  - REST pages: server time, senderNickname and, since server-v2 bf2c85d,
+ *    the sender's clientMessageId
  *  - new_message: server time and roomId, no senderNickname, no clientMessageId
  *  - this tab's sends: a pending row keyed by its clientMessageId, client time
  * The server sends message_ack and new_message from different threads
  * (ChatWebSocketHandler.handleSendMessage, ChatEventListener.onMessageSent),
  * so either can come first, and an idempotent resend gets the ack and no
- * new_message at all. The ack is the only link between a pending row and its
- * server message.
+ * new_message at all. The ack links a pending row to its server message; a
+ * REST row's clientMessageId links one whose ack got lost.
  *
  * Order: rows with a server createdAt sort by time, then id. Rows with only a
  * client time (pending, failed, acked but not seen from the server yet) stay
@@ -147,9 +148,21 @@ function merge(
   removed: Record<string, true> = {},
 ): ChatMessage[] {
   const rows = new Map(list.map((row) => [row.id, row]));
+  // Rows this tab sent, by their key. A REST row naming one that is still
+  // pending or failed (its ack got lost) replaces it instead of standing next
+  // to it as a second copy.
+  const own = new Map<string, ChatMessage>();
+  for (const row of list) if (row.clientMessageId) own.set(row.clientMessageId, row);
   for (const message of messages) {
     if (Object.hasOwn(removed, message.id)) continue; // expired or burned: never back
-    rows.set(message.id, toRow(roomId, message, rows.get(message.id)));
+    let existing = rows.get(message.id);
+    const mine = message.clientMessageId ? own.get(message.clientMessageId) : undefined;
+    if (mine && mine.id !== message.id) {
+      rows.delete(mine.id);
+      // A live copy may hold the server id already; it takes this row's key.
+      existing = { ...(existing ?? mine), clientMessageId: mine.clientMessageId, ttlSeconds: mine.ttlSeconds };
+    }
+    rows.set(message.id, toRow(roomId, message, existing));
   }
   return [...rows.values()].sort(compareRows);
 }

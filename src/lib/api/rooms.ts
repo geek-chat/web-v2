@@ -33,6 +33,9 @@ export type Room = z.infer<typeof roomSchema>;
 /** One row of GET /api/rooms/:id/messages. The room id is the path, not a field. */
 export const messageSchema = z.object({
   id: z.string(),
+  // The sender's idempotency key (server-v2 bf2c85d; new_message lacks it).
+  // Older servers leave it out.
+  clientMessageId: z.string().optional(),
   senderId: z.string(),
   senderNickname: z.string(),
   content: z.string(),
