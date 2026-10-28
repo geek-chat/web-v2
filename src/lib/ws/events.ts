@@ -7,6 +7,9 @@ import { z } from "zod";
 import { messageTypeSchema } from "@/lib/api/rooms";
 
 const serverEventSchemas = {
+  // Once the server has accepted the connection and joined it to the user's
+  // rooms (server-v2 bf2c85d). A rejected connection never gets it.
+  connected: z.object({ userId: z.string(), roomIds: z.array(z.string()) }),
   message_ack: z.object({ clientMessageId: z.string(), serverId: z.string() }),
   new_message: z.object({
     id: z.string(),

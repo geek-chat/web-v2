@@ -6,13 +6,15 @@
  *   opens a new WebSocket and binds its callbacks again; callbacks from a
  *   replaced socket are ignored.
  * - The server checks a connection only after the handshake
- *   (ChatWebSocketHandler.afterConnectionEstablished) and sends nothing when
- *   it accepts one, so a rejected socket fires `onopen` too and then gets an
- *   `error` frame and close 1008. Two windows follow `onopen`:
- *     accepted: ACCEPT_WINDOW_MS without a rejection, or any frame other than
- *       `error`. The status turns "open", which triggers the backfill.
- *     stable: STABLE_AFTER_MS open, or any frame other than `error`. Only
- *       then are the backoff and the refresh-once guard reset.
+ *   (ChatWebSocketHandler.afterConnectionEstablished), so a rejected socket
+ *   fires `onopen` too and then gets an `error` frame. An accepted one gets a
+ *   `connected` frame (server-v2 bf2c85d). Two windows follow `onopen`:
+ *     accepted: `connected` or any other frame but `error`, or, from servers
+ *       that predate `connected`, ACCEPT_WINDOW_MS without a rejection. The
+ *       status turns "open", which triggers the backfill.
+ *     stable: STABLE_AFTER_MS open, or a frame other than `error` and
+ *       `connected`. Only then are the backoff and the refresh-once guard
+ *       reset.
  * - A rejection is decided from its `error` frame, at once: the client closes
  *   the socket itself. The server's close 1008 follows the frame, but on the
  *   production path (Cloudflare to Render) it can get lost, and the browser
@@ -44,7 +46,10 @@ import {
 export const MIN_RECONNECT_MS = 2000;
 export const MAX_RECONNECT_MS = 30_000;
 export const JITTER_MS = 1000;
-/** The server rejects inside its handshake callback, so a rejection lands right after `onopen`. */
+/**
+ * For servers that predate `connected`: the server rejects inside its
+ * handshake callback, so a rejection lands right after `onopen`.
+ */
 export const ACCEPT_WINDOW_MS = 1000;
 export const STABLE_AFTER_MS = 10_000;
 
@@ -190,7 +195,11 @@ export class ChatWSClient {
       warnDroppedFrame(message.data);
       return;
     }
-    if (event.type !== "error") {
+    if (event.type === "connected") {
+      // Every accepted connection gets this frame, so it does not prove the
+      // link stable: one that keeps dropping right after it must back off.
+      this.markAccepted();
+    } else if (event.type !== "error") {
       // Only an accepted connection receives anything but an error frame.
       this.markAccepted();
       this.markStable();

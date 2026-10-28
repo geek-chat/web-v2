@@ -67,3 +67,12 @@ describe("isConnectRejectionCode since server-v2 bf2c85d", () => {
     expect(isConnectRejectionCode("ACCOUNT_WITHDRAWN")).toBe(true);
   });
 });
+
+describe("parseServerEvent since server-v2 bf2c85d", () => {
+  it("parses the connected frame", () => {
+    expect(parseServerEvent(frame("connected", { userId: "u1", roomIds: ["r1", "r2"] }))).toEqual({
+      type: "connected",
+      data: { userId: "u1", roomIds: ["r1", "r2"] },
+    });
+  });
+});

@@ -547,3 +547,50 @@ describe("ChatWSClient when the close frame does not arrive", () => {
     expect(client.getStatus()).toBe("open");
   });
 });
+
+// server-v2 bf2c85d sends `connected` once it accepts a connection.
+describe("ChatWSClient with the connected frame", () => {
+  const clients: ChatWSClient[] = [];
+  const track = (client: ChatWSClient) => {
+    clients.push(client);
+    return client;
+  };
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.spyOn(Math, "random").mockReturnValue(0);
+    vi.stubGlobal("WebSocket", FakeWebSocket);
+    FakeWebSocket.instances = [];
+    setTokens({ accessToken: ACCESS_1, refreshToken: "refresh-1" });
+  });
+
+  afterEach(() => {
+    clients.splice(0).forEach((client) => client.close());
+    vi.useRealTimers();
+  });
+
+  it("reports open as soon as connected arrives, before the accept window ends", () => {
+    const client = track(new ChatWSClient());
+    client.start();
+    latest().open();
+
+    latest().emit("connected", { userId: "u1", roomIds: ["r1"] });
+
+    expect(client.getStatus()).toBe("open");
+  });
+
+  it("keeps backing off for a connection that drops right after connected", async () => {
+    track(new ChatWSClient()).start();
+    latest().drop(1006); // waits 2s, then 4s next time
+    await vi.advanceTimersByTimeAsync(2000);
+    latest().open();
+    latest().emit("connected", { userId: "u1", roomIds: [] });
+
+    latest().drop(1006);
+    await vi.advanceTimersByTimeAsync(3999);
+    expect(sockets()).toHaveLength(2);
+    await vi.advanceTimersByTimeAsync(1);
+
+    expect(sockets()).toHaveLength(3);
+  });
+});
