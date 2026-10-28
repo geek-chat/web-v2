@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { useAuthStore } from "@/store/auth";
 import { verifySession } from "@/lib/auth/session";
 import { decodeJwt } from "@/lib/auth/jwt";
+import { SESSION_ENDED_TOAST_ID } from "@/lib/auth/notices";
 import { getAccessToken, isTokenStorageKey } from "@/lib/auth/storage";
 import { t } from "@/i18n";
 
@@ -26,7 +27,7 @@ export default function AppBoot() {
 
     function handleAuthLogout() {
       clearSession();
-      toast.info(t("auth.error.TokenExpired"));
+      toast.info(t("auth.error.TokenExpired"), { id: SESSION_ENDED_TOAST_ID });
     }
     function handleOnline() {
       if (useAuthStore.getState().status === "offline") void verifySession();

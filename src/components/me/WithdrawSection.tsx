@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/Input";
 import { withdraw } from "@/lib/api/auth";
 import { AuthExpiredError } from "@/lib/api/client";
 import { describeApiError } from "@/lib/api/errorMessage";
+import { SESSION_ENDED_TOAST_ID } from "@/lib/auth/notices";
 import { useAuthStore } from "@/store/auth";
 import { t } from "@/i18n";
 
@@ -24,7 +25,9 @@ export function WithdrawSection() {
     try {
       await withdraw();
       clearSession(); // AuthGuard then sends the user to /login
-      toast.success(t("me.withdraw.success"));
+      // The server's ACCOUNT_WITHDRAWN frame may have ended the session first,
+      // with AppBoot's logout toast: this one replaces it (same id).
+      toast.success(t("me.withdraw.success"), { id: SESSION_ENDED_TOAST_ID });
     } catch (err) {
       // AppBoot already announced an expired session through auth:logout.
       if (!(err instanceof AuthExpiredError)) toast.error(describeApiError(err, "generic"));
