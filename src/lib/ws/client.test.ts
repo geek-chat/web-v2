@@ -443,3 +443,107 @@ describe("ChatWSClient", () => {
     expect(socket.closedWith).toBe(1000);
   });
 });
+
+// Production (Cloudflare to Render) loses the server's 1008 after a rejection
+// frame: the browser reports 1006 about 20s later. The client decides from the
+// frame instead (RULES.md R2).
+describe("ChatWSClient when the close frame does not arrive", () => {
+  const clients: ChatWSClient[] = [];
+  const track = (client: ChatWSClient) => {
+    clients.push(client);
+    return client;
+  };
+  const logouts = vi.fn();
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.spyOn(Math, "random").mockReturnValue(0);
+    vi.stubGlobal("WebSocket", FakeWebSocket);
+    FakeWebSocket.instances = [];
+    logouts.mockClear();
+    window.addEventListener("auth:logout", logouts);
+    setTokens({ accessToken: ACCESS_1, refreshToken: "refresh-1" });
+  });
+
+  afterEach(() => {
+    clients.splice(0).forEach((client) => client.close());
+    window.removeEventListener("auth:logout", logouts);
+    vi.useRealTimers();
+  });
+
+  /** A rejection as production delivers it: the handshake and the error frame, then no close. */
+  const rejectWithoutClose = (socket: FakeWebSocket, code: string) => {
+    socket.open();
+    socket.emit("error", { code, message: code });
+  };
+
+  it("closes the socket itself and refreshes after TOKEN_EXPIRED", async () => {
+    const fetchMock = installRefresh();
+    track(new ChatWSClient()).start();
+    const first = latest();
+
+    rejectWithoutClose(first, "TOKEN_EXPIRED");
+    expect(first.closedWith).toBe(1000);
+    await vi.advanceTimersByTimeAsync(2000);
+
+    expect(refreshCalls(fetchMock)).toBe(1);
+    expect(latest().url).toBe(`${WS_URL}?token=${ACCESS_2}`);
+  });
+
+  it("stays blocked after MAX_CONNECTIONS when the socket drops with 1006 later", async () => {
+    const client = track(new ChatWSClient());
+    client.start();
+    const first = latest();
+
+    rejectWithoutClose(first, "MAX_CONNECTIONS");
+    expect(client.getStatus()).toBe("blocked");
+    first.drop(1006);
+    await vi.advanceTimersByTimeAsync(60_000);
+
+    expect(client.getStatus()).toBe("blocked");
+    expect(sockets()).toHaveLength(1);
+  });
+
+  it("ends the session on ACCOUNT_WITHDRAWN, even on an accepted connection", async () => {
+    const fetchMock = installRefresh();
+    const client = track(new ChatWSClient());
+    client.start();
+    latest().open();
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(client.getStatus()).toBe("open");
+
+    latest().emit("error", { code: "ACCOUNT_WITHDRAWN", message: "Account has been withdrawn" });
+    await vi.advanceTimersByTimeAsync(60_000);
+
+    expect(client.getStatus()).toBe("closed");
+    expect(getAccessToken()).toBeNull();
+    expect(logouts).toHaveBeenCalledTimes(1);
+    expect(sockets()).toHaveLength(1);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("reconnects with backoff after the heartbeat closes a silent socket (4500)", async () => {
+    const fetchMock = installRefresh();
+    track(new ChatWSClient()).start();
+    latest().open();
+    await vi.advanceTimersByTimeAsync(10_000);
+
+    latest().drop(4500);
+    await vi.advanceTimersByTimeAsync(2000);
+
+    expect(sockets()).toHaveLength(2);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("keeps a healthy connection open on a send failure", async () => {
+    const client = track(new ChatWSClient());
+    client.start();
+    latest().open();
+    await vi.advanceTimersByTimeAsync(1000);
+
+    latest().emit("error", { code: "SEND_FAILED", message: "Not a member of this chat room", clientMessageId: "c1" });
+
+    expect(latest().closedWith).toBeUndefined();
+    expect(client.getStatus()).toBe("open");
+  });
+});

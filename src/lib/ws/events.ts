@@ -82,13 +82,20 @@ export interface ClientEventMap {
 }
 export type ClientEventType = keyof ClientEventMap;
 
-/** Codes of the `error` frame the server sends right before closing a rejected connection with 1008. */
+/**
+ * Codes of the `error` frame that ends a connection. The server sends one
+ * right before it closes a connection it rejects in the handshake
+ * (ChatWebSocketHandler.reject), and ACCOUNT_WITHDRAWN also to the open
+ * connections of an account that has just been withdrawn
+ * (WithdrawnUserDisconnector). Send failures use other codes.
+ */
 export const CONNECT_REJECTION_CODES = [
   "NO_TOKEN",
   "TOKEN_EXPIRED",
   "INVALID_TOKEN",
   "RATE_LIMITED",
   "MAX_CONNECTIONS",
+  "ACCOUNT_WITHDRAWN",
 ] as const;
 export type ConnectRejectionCode = (typeof CONNECT_REJECTION_CODES)[number];
 

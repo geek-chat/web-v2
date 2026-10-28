@@ -61,3 +61,9 @@ describe("isConnectRejectionCode", () => {
     }
   });
 });
+
+describe("isConnectRejectionCode since server-v2 bf2c85d", () => {
+  it("also counts ACCOUNT_WITHDRAWN, which can end an open connection too", () => {
+    expect(isConnectRejectionCode("ACCOUNT_WITHDRAWN")).toBe(true);
+  });
+});

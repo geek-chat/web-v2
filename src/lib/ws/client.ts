@@ -13,7 +13,12 @@
  *       `error`. The status turns "open", which triggers the backfill.
  *     stable: STABLE_AFTER_MS open, or any frame other than `error`. Only
  *       then are the backoff and the refresh-once guard reset.
- * - Close 1008 is branched on the rejection code that preceded it.
+ * - A rejection is decided from its `error` frame, at once: the client closes
+ *   the socket itself. The server's close 1008 follows the frame, but on the
+ *   production path (Cloudflare to Render) it can get lost, and the browser
+ *   then reports 1006 about 20s later. A 1008 without a frame refreshes once;
+ *   any other close (1006, 4500 from the heartbeat, 1011) reconnects with
+ *   backoff.
  * - The access token is read from storage on every attempt and refreshed only
  *   through the shared single-flight refreshOnce().
  * - close() disposes the client: timers are cancelled and every continuation
@@ -71,7 +76,6 @@ export class ChatWSClient {
   private readonly statusListeners = new Set<(status: WSStatus) => void>();
   private reconnectMs = MIN_RECONNECT_MS;
   private authRetried = false;
-  private lastRejection: ConnectRejectionCode | null = null;
   // Refresh token of the session the current socket was opened with (see endSession).
   private startedWith: string | null = null;
   private retryTimer: ReturnType<typeof setTimeout> | undefined;
@@ -165,7 +169,6 @@ export class ChatWSClient {
       if (this.disposed || this.isForeign(token)) return;
     }
     this.startedWith = startedWith;
-    this.lastRejection = null;
     const socket = new WebSocket(`${this.url}?token=${encodeURIComponent(token)}`);
     this.socket = socket;
     socket.onopen = () => this.handleOpen(socket);
@@ -187,36 +190,49 @@ export class ChatWSClient {
       warnDroppedFrame(message.data);
       return;
     }
-    if (event.type === "error") {
-      // `error` also arrives on a healthy connection (send failures). Only the
-      // rejection codes decide what a following 1008 means.
-      if (isConnectRejectionCode(event.data.code)) this.lastRejection = event.data.code;
-    } else {
+    if (event.type !== "error") {
       // Only an accepted connection receives anything but an error frame.
       this.markAccepted();
       this.markStable();
     }
     this.emit(event.type, event.data);
+    // `error` also arrives on a healthy connection (send failures); only the
+    // rejection codes end it.
+    if (event.type === "error" && isConnectRejectionCode(event.data.code) && socket === this.socket) {
+      this.detach();
+      socket.close(NORMAL_CLOSURE);
+      this.handleRejection(event.data.code);
+    }
   }
 
   private handleClose(socket: WebSocket, close: CloseEvent): void {
     if (socket !== this.socket) return;
+    this.detach();
+    // A rejection frame has ended its socket already. A 1008 without one is a
+    // rejection whose frame got lost: refresh once.
+    if (close.code === POLICY_VIOLATION) void this.refreshAndReconnect();
+    else this.scheduleReconnect();
+  }
+
+  /** Forgets the current socket, so its later callbacks are ignored. */
+  private detach(): void {
     this.socket = null;
     this.clearSocketTimers();
-    const rejection = this.lastRejection;
-    this.lastRejection = null;
-    if (close.code !== POLICY_VIOLATION) {
-      this.scheduleReconnect();
-      return;
-    }
-    switch (rejection) {
+  }
+
+  private handleRejection(code: ConnectRejectionCode): void {
+    switch (code) {
       case "MAX_CONNECTIONS":
         this.setStatus("blocked"); // no reconnect until the user asks
         return;
       case "RATE_LIMITED":
         this.scheduleReconnect(); // no refresh; the backoff waits at least 2s
         return;
-      default: // TOKEN_EXPIRED, INVALID_TOKEN, NO_TOKEN, or no error frame at all
+      case "ACCOUNT_WITHDRAWN":
+        // The account is gone: its tokens can never connect again.
+        this.endOrReconnect(this.startedWith);
+        return;
+      default: // TOKEN_EXPIRED, INVALID_TOKEN, NO_TOKEN
         void this.refreshAndReconnect();
     }
   }
@@ -287,13 +303,13 @@ export class ChatWSClient {
   }
 
   private markAccepted(): void {
-    if (!this.socket || this.lastRejection || this.status === "open") return;
+    if (!this.socket || this.status === "open") return;
     clearTimeout(this.acceptTimer);
     this.setStatus("open");
   }
 
   private markStable(): void {
-    if (!this.socket || this.lastRejection) return;
+    if (!this.socket) return;
     clearTimeout(this.stableTimer);
     this.reconnectMs = MIN_RECONNECT_MS;
     this.authRetried = false;
